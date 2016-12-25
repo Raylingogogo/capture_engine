@@ -11,6 +11,22 @@
 #include <shlobj.h>
 #include <Shlwapi.h>
 #include <powrprof.h>
+#include <ks.h>
+#include <iostream>
+
+
+// Main function for the console
+int main() {
+
+	// Calling the wWinMain function to start the GUI program
+	// Parameters:
+	// GetModuleHandle(NULL) - To get a handle to the current instance
+	// NULL - Previous instance is not needed
+	// NULL - Command line parameters are not needed
+	// 1 - To show the window normally
+	wWinMain(GetModuleHandle(NULL), NULL, NULL, 1);
+	return 0;
+}
 
 // Include the v6 common controls in the manifest
 #pragma comment(linker, \
@@ -396,7 +412,11 @@ namespace MainWindow
         {
             goto done;
         }
-
+		hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_CATEGORY, KSCATEGORY_SENSOR_CAMERA);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
         // Enumerate devices.
         hr = MFEnumDeviceSources(pAttributes, &param.ppDevices, &param.count);
         if (FAILED(hr))
@@ -573,8 +593,8 @@ done:
         SYSTEMTIME time;
         GetLocalTime(&time);
 
-        hr = StringCchPrintf(filename, MAX_PATH, L"MyPhoto%04u_%02u%02u_%02u%02u%02u.jpg",
-            time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
+        hr = StringCchPrintf(filename, MAX_PATH, L"MyPhoto%04u_%02u%02u_%02u%02u%02u_%d.jpg",
+            time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, index);
         if (FAILED(hr))
         {
             goto done;
@@ -586,8 +606,9 @@ done:
             hr = E_FAIL;
             goto done;
         }
+		wprintf(L"%s\n", path);
 
-        hr = g_pEngine->TakePhoto(path);
+        hr = g_pEngine->TakePhoto(filename);
         if (FAILED(hr))
         {
             goto done;
