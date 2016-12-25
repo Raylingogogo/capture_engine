@@ -593,8 +593,8 @@ done:
         SYSTEMTIME time;
         GetLocalTime(&time);
 
-        hr = StringCchPrintf(filename, MAX_PATH, L"MyPhoto%04u_%02u%02u_%02u%02u%02u_%d.jpg",
-            time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, index);
+        hr = StringCchPrintf(filename, MAX_PATH, L"MyPhoto%04u_%02u%02u_%02u%02u%02u.jpg",
+            time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
         if (FAILED(hr))
         {
             goto done;
