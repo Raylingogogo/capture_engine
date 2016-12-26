@@ -13,6 +13,7 @@
 #include <powrprof.h>
 #include <ks.h>
 #include <iostream>
+#include <atlcomcli.h>
 
 
 // Main function for the console
@@ -24,8 +25,10 @@ int main() {
 	// NULL - Previous instance is not needed
 	// NULL - Command line parameters are not needed
 	// 1 - To show the window normally
-	printf("Start MediaFoundation \n");
+	//printf("Start MediaFoundation \n");
 	wWinMain(GetModuleHandle(NULL), NULL, NULL, 1);
+	
+	system("pause");
 	return 0;
 }
 
@@ -237,6 +240,7 @@ namespace MainWindow
     bool bRecording = false;
     bool bPreviewing = false;
     IMFActivate* pSelectedDevice = NULL;
+	static bool capture_photo = 0;
      
     wchar_t PhotoFileName[MAX_PATH];
 
@@ -353,7 +357,7 @@ namespace MainWindow
 		// Post message to enum device
 		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
 		// Note: Need to wait for device preparation
-		Sleep(10);
+		//Sleep(300);
 		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
 
     done:
@@ -457,6 +461,19 @@ namespace MainWindow
             SafeRelease(&pSelectedDevice);
             pSelectedDevice = param.ppDevices[iDevice];
             pSelectedDevice->AddRef();
+
+			// Get Friendly Name
+			WCHAR *szFriendlyName = NULL;
+			UINT32 cchName;
+
+			hr = param.ppDevices[iDevice]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
+				&szFriendlyName, &cchName);
+			if (FAILED(hr))
+			{
+				goto done;
+			}
+			wprintf(L"Device Name = %s \n", szFriendlyName);
+			CoTaskMemFree(szFriendlyName);
         }
 
     done:
@@ -639,7 +656,6 @@ done:
     
     void OnCommand(HWND hwnd, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)
     {
-		static bool capture_photo = 0;
         switch (id)
         {
         case ID_CAPTURE_CHOOSEDEVICE:
@@ -659,20 +675,11 @@ done:
 
         case ID_CAPTURE_TAKEPHOTO:
 			// Can't use traditional function to do capturing...Can't get data
-            //OnTakePhoto(hwnd);
-			capture_photo = 1;
-
-			if (g_pEngine->IsPreviewing())
-			{
-				OnStopPreview(hwnd);
-			}
-			else
-			{
-				OnStartPreview(hwnd, capture_photo);
-			}
+            OnTakePhoto(hwnd);
             break;
         case ID_CAPTURE_PREVIEW:
 			printf("capture_photo = %d \n", capture_photo);
+			Sleep(100);
             if (g_pEngine->IsPreviewing())
             {
                 OnStopPreview(hwnd);
@@ -681,7 +688,22 @@ done:
             {
                 OnStartPreview(hwnd, capture_photo);
             }
+			capture_photo = 0;
             break;
+		case ID_CAPTURE_FRAME:
+			{
+				capture_photo = 1;
+
+				if (g_pEngine->IsPreviewing())
+				{
+					OnStopPreview(hwnd);
+				}
+				// Start photo capture
+				// Post message to enum device
+				PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
+				// Note: Need to wait for device preparation
+				PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
+			}
         }
     }
 

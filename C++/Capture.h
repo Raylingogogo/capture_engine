@@ -165,6 +165,7 @@ class CaptureManager
     HANDLE                  m_hpwrRequest;
     bool                    m_fPowerRequestSet;
 
+
     CaptureManager(HWND hwnd) : 
         m_hwndEvent(hwnd), m_hwndPreview(NULL), m_pEngine(NULL), m_pPreview(NULL), 
         m_pCallback(NULL), m_pSampleCallback(NULL), m_bRecording(false), m_bPreviewing(false), m_bPhotoPending(false), m_errorID(0),m_hEvent(NULL)
