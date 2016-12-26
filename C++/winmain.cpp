@@ -24,6 +24,7 @@ int main() {
 	// NULL - Previous instance is not needed
 	// NULL - Command line parameters are not needed
 	// 1 - To show the window normally
+	printf("Start MediaFoundation \n");
 	wWinMain(GetModuleHandle(NULL), NULL, NULL, 1);
 	return 0;
 }
@@ -349,6 +350,12 @@ namespace MainWindow
         UpdateUI(hwnd);
         fSuccess = TRUE;
 
+		// Post message to enum device
+		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
+		// Note: Need to wait for device preparation
+		Sleep(10);
+		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
+
     done:
         SafeRelease(&pAttributes);
         return fSuccess;
@@ -425,14 +432,17 @@ namespace MainWindow
         }
 
         // Ask the user to select one.
+		/* Skip selection and use default
         INT_PTR result = DialogBoxParam(GetModuleHandle(NULL),
             MAKEINTRESOURCE(IDD_CHOOSE_DEVICE), hwnd,
             ChooseDeviceDlgProc, (LPARAM)&param);
-
-        if ((result == IDOK) && (param.selection != (UINT32)-1))
-        {
-            UINT iDevice = param.selection;
-
+		*/
+		
+        //if ((result == IDOK) && (param.selection != (UINT32)-1))
+        if (1)
+		{
+            //UINT iDevice = param.selection;
+			UINT iDevice = 0; //Default use 1
             if (iDevice >= param.count)
             {
                 hr = E_UNEXPECTED;
@@ -559,9 +569,9 @@ done:
         }
         UpdateUI(hwnd);
     }
-    void OnStartPreview (HWND hwnd)
+    void OnStartPreview (HWND hwnd, bool capture_photo)
     {
-        HRESULT hr = g_pEngine->StartPreview();
+        HRESULT hr = g_pEngine->StartPreview(capture_photo);
         if (FAILED(hr))
         {
             ShowError(hwnd, IDS_ERR_RECORD, hr);
@@ -629,6 +639,7 @@ done:
     
     void OnCommand(HWND hwnd, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)
     {
+		static bool capture_photo = 0;
         switch (id)
         {
         case ID_CAPTURE_CHOOSEDEVICE:
@@ -647,16 +658,28 @@ done:
             break;
 
         case ID_CAPTURE_TAKEPHOTO:
-            OnTakePhoto(hwnd);
+			// Can't use traditional function to do capturing...Can't get data
+            //OnTakePhoto(hwnd);
+			capture_photo = 1;
+
+			if (g_pEngine->IsPreviewing())
+			{
+				OnStopPreview(hwnd);
+			}
+			else
+			{
+				OnStartPreview(hwnd, capture_photo);
+			}
             break;
         case ID_CAPTURE_PREVIEW:
+			printf("capture_photo = %d \n", capture_photo);
             if (g_pEngine->IsPreviewing())
             {
                 OnStopPreview(hwnd);
             }
             else
             {
-                OnStartPreview(hwnd);
+                OnStartPreview(hwnd, capture_photo);
             }
             break;
         }

@@ -31,6 +31,7 @@
 #include <strsafe.h>
 #include <commctrl.h>
 #include <d3d11.h>
+#include <mfobjects.h>
 
 const UINT WM_APP_CAPTURE_EVENT = WM_APP + 1;
 
@@ -127,6 +128,25 @@ class CaptureManager
         CaptureManager* m_pManager;
     };
 
+	
+	// Sample callback
+	class CaptureEngineSampleCB : public IMFCaptureEngineOnSampleCallback
+	{
+		long m_cRef;
+		HWND m_hwnd;
+	public:
+		CaptureEngineSampleCB(HWND hwnd) : m_cRef(1), m_hwnd(hwnd) {}
+
+		// IUnknown
+		STDMETHODIMP QueryInterface(REFIID riid, void** ppv);
+		STDMETHODIMP_(ULONG) AddRef();
+		STDMETHODIMP_(ULONG) Release();
+
+		HRESULT STDMETHODCALLTYPE OnSample(
+			_In_opt_  IMFSample *pSample);
+	};
+	
+
     HWND                    m_hwndEvent;
     HWND                    m_hwndPreview;
 
@@ -134,6 +154,7 @@ class CaptureManager
     IMFCapturePreviewSink   *m_pPreview;
 
     CaptureEngineCB         *m_pCallback;
+	CaptureEngineSampleCB	*m_pSampleCallback;
 
     bool                    m_bPreviewing;
     bool                    m_bRecording;
@@ -146,7 +167,7 @@ class CaptureManager
 
     CaptureManager(HWND hwnd) : 
         m_hwndEvent(hwnd), m_hwndPreview(NULL), m_pEngine(NULL), m_pPreview(NULL), 
-        m_pCallback(NULL), m_bRecording(false), m_bPreviewing(false), m_bPhotoPending(false), m_errorID(0),m_hEvent(NULL)
+        m_pCallback(NULL), m_pSampleCallback(NULL), m_bRecording(false), m_bPreviewing(false), m_bPhotoPending(false), m_errorID(0),m_hEvent(NULL)
         ,m_hpwrRequest(INVALID_HANDLE_VALUE)
         ,m_fPowerRequestSet(false)
     {
@@ -213,6 +234,7 @@ public:
         SafeRelease(&m_pPreview);
         SafeRelease(&m_pEngine);
         SafeRelease(&m_pCallback);
+		SafeRelease(&m_pSampleCallback);
 
         if(g_pDXGIMan)
         {
@@ -236,7 +258,7 @@ public:
 
     HRESULT OnCaptureEvent(WPARAM wParam, LPARAM lParam); 
     HRESULT SetVideoDevice(IUnknown *pUnk);
-    HRESULT StartPreview();
+	HRESULT StartPreview(bool capture_photo);
     HRESULT StopPreview();
     HRESULT StartRecord(PCWSTR pszDestinationFile);
     HRESULT StopRecord();

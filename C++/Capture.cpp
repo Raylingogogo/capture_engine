@@ -87,6 +87,39 @@ STDMETHODIMP CaptureManager::CaptureEngineCB::OnEvent( _In_ IMFMediaEvent* pEven
     return S_OK;
 }
 
+
+STDMETHODIMP CaptureManager::CaptureEngineSampleCB::QueryInterface(REFIID riid, void** ppv)
+{
+	static const QITAB qit[] =
+	{
+		QITABENT(CaptureEngineSampleCB, IMFCaptureEngineOnSampleCallback),
+		{ 0 }
+	};
+	return QISearch(this, qit, riid, ppv);
+}
+
+STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::AddRef()
+{
+	return InterlockedIncrement(&m_cRef);
+}
+
+STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
+{
+	LONG cRef = InterlockedDecrement(&m_cRef);
+	if (cRef == 0)
+	{
+		delete this;
+	}
+	return cRef;
+}
+
+HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
+{
+	printf("Raylin preview data\n");
+	//return E_NOTIMPL;
+	return S_OK;
+}
+
 HRESULT CreateDX11Device(_Out_ ID3D11Device** ppDevice, _Out_ ID3D11DeviceContext** ppDeviceContext, _Out_ D3D_FEATURE_LEVEL* pFeatureLevel )
 {
     HRESULT hr = S_OK;
@@ -176,6 +209,14 @@ CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
         hr = E_OUTOFMEMORY;
         goto Exit;
     }
+	
+	m_pSampleCallback = new (std::nothrow) CaptureEngineSampleCB(m_hwndPreview);
+	if (m_pSampleCallback == NULL)
+	{
+		hr = E_OUTOFMEMORY;
+		goto Exit;
+	}
+	
 
     m_pCallback->m_pManager = this;
     m_hwndPreview = hwndPreview;
@@ -335,7 +376,7 @@ void CaptureManager::OnRecordStopped(HRESULT& hrStatus)
 }
 
 
-HRESULT CaptureManager::StartPreview()
+HRESULT CaptureManager::StartPreview(bool capture_photo)
 {
     if (m_pEngine == NULL)
     {
@@ -351,7 +392,7 @@ HRESULT CaptureManager::StartPreview()
     IMFMediaType *pMediaType = NULL;
     IMFMediaType *pMediaType2 = NULL;
     IMFCaptureSource *pSource = NULL;
-
+	DWORD dwSinkStreamIndex;
     HRESULT hr = S_OK;
     
     // Get a pointer to the preview sink.
@@ -401,7 +442,6 @@ HRESULT CaptureManager::StartPreview()
         }
 
         // Connect the video stream to the preview sink.
-        DWORD dwSinkStreamIndex;
         hr = m_pPreview->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW,  pMediaType2, NULL, &dwSinkStreamIndex);        
         if (FAILED(hr))
         {
@@ -409,6 +449,9 @@ HRESULT CaptureManager::StartPreview()
         }
     }
 
+	// Set callback of sink
+	if (capture_photo)
+		hr = m_pPreview->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback);
 
     hr = m_pEngine->StartPreview();
     if (!m_fPowerRequestSet && m_hpwrRequest != INVALID_HANDLE_VALUE)
