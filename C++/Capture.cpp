@@ -7,10 +7,13 @@
 
 #include "Capture.h"
 #include "resource.h"
+#include <string>
 
 IMFDXGIDeviceManager* g_pDXGIMan = NULL;
 ID3D11Device*         g_pDX11Device = NULL;
 UINT                  g_ResetToken = 0;
+
+extern int g_threshold;
 
 STDMETHODIMP CaptureManager::CaptureEngineCB::QueryInterface(REFIID riid, void** ppv)
 {
@@ -113,6 +116,8 @@ STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
 	return cRef;
 }
 
+FILE *stream;
+FILE *file_log;
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
 	LONGLONG frameTimeStamp, frameDuration;
@@ -122,14 +127,16 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	DWORD bufferCount;
 	pSample->GetBufferCount(&bufferCount);
 
-	printf("TimeStamp, duration = [%ld, %lld, %ld]\n", tickCount, frameDuration, bufferCount);
-
 	HRESULT hr = S_OK;
 	DWORD	dwBufferCount = 0;
 	IMFMediaBuffer *pSampleBuffer = NULL;
 	BYTE	*pbInputData = NULL;
 	DWORD dwCurrentLength, dwMaxLength;
-	static DWORD frame_index = 0;
+	static int frame_index = 0;
+	static DWORD average_sum[2] = { 0 };
+	errno_t err;
+	char file_buf[50] = { 0 };
+	char log_buf[250] = { 0 };
 
 	hr = pSample->GetTotalLength(&dwBufferCount);
 
@@ -139,28 +146,53 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	}
 
 	// Get buffer from pSample
-	hr = pSample->GetBufferByIndex(0, &pSampleBuffer);
+	hr = pSample->ConvertToContiguousBuffer(&pSampleBuffer);
 	if (FAILED(hr))
 	{
 		goto done;
 	}
 
 	pSampleBuffer->Lock(&pbInputData, &dwMaxLength, &dwCurrentLength);
-	printf("Total data count = %d, %d\n", dwMaxLength, dwCurrentLength);
-	// Calculate average
-	for (int i = 0; i < 10; i++)
-	{
-		printf("output = %d\n", (*((SHORT *)pbInputData + i)) + 32768);
-	}
+	printf("TimeStamp, duration = [%ld, %lld, %ld, %ld]\n", tickCount, frameDuration, bufferCount, dwMaxLength);
 
+	// Stream File open
+	sprintf_s(file_buf, "outfile_%d.yuy2", frame_index);
+	if ((err = fopen_s(&stream, file_buf, "w+")) != 0)
+		printf("The stream file was not opened\n");
+	else
+		printf("The stream file was opened\n");
+
+	// Calculate average
+	for (DWORD i = 0; i < dwMaxLength; i++)
+		average_sum[frame_index] += *(pbInputData + i);
+	average_sum[frame_index] /= dwMaxLength;
+	fwrite(pbInputData, 1, dwMaxLength, stream);
 	// Output result
 	pSampleBuffer->Unlock();
 	pSampleBuffer->Release();
 
+	fclose(stream);
+
 	frame_index++;
 
-	if (frame_index == 4)
+	if (frame_index == 2)
+	{
+		int diff = abs((int)(average_sum[0] - average_sum[1]));
+		printf("frame 0 average = %d \n", average_sum[0]);
+		printf("frame 1 average = %d \n", average_sum[1]);
+		printf("Result = %d, %s", diff, diff > g_threshold? "PASS":"FAIL");
+
+		// Stream File open
+		if ((err = fopen_s(&file_log, "result.log", "w+")) != 0)
+			printf("The log file was not opened\n");
+
+		// Write to log file
+		sprintf_s(log_buf, "[frame 1, frame 2, diff] = [%d, %d, %d], %s \n", average_sum[0], average_sum[1], diff, diff > g_threshold ? "PASS" : "FAIL");
+		fwrite(log_buf, 1, sizeof(log_buf), file_log);
+		fclose(file_log);
 		exit(0);
+	}
+
 
 done:
 	return hr;
@@ -440,8 +472,8 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 	IMFCaptureSource *pSource = NULL;
 	DWORD dwSinkStreamIndex;
 	HRESULT hr = S_OK;
-	GUID majorType, subType;
-	UINT32 uiWidth, uiHeight, uiNumerator, uiDenominator, uiFps, uiProfile;
+	GUID subType;
+	UINT32 uiWidth, uiHeight, uiNumerator, uiDenominator, uiFps;
 
 	// Get a pointer to the preview sink.
 	if (m_pPreview == NULL)
@@ -477,13 +509,6 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			goto done;
 		}
 
-		// Print current media type
-		pMediaType->GetGUID(MF_MT_SUBTYPE, &subType);
-		printf("[Format] GUID: %08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X\n",
-			subType.Data1, subType.Data2, subType.Data3,
-			subType.Data4[0], subType.Data4[1], subType.Data4[2], subType.Data4[3],
-			subType.Data4[4], subType.Data4[5], subType.Data4[6], subType.Data4[7]);
-
 		// Keep the format of YUY2 (MEDIASUBTYPE_YUY2)
 		/*
 		hr = CloneVideoMediaType(pMediaType, MFVideoFormat_RGB32, &pMediaType2);
@@ -493,6 +518,12 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			goto done;
 		}
 		*/
+		// Print current media type
+		pMediaType->GetGUID(MF_MT_SUBTYPE, &subType);
+		printf("[Format] GUID: %08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X\n",
+			subType.Data1, subType.Data2, subType.Data3,
+			subType.Data4[0], subType.Data4[1], subType.Data4[2], subType.Data4[3],
+			subType.Data4[4], subType.Data4[5], subType.Data4[6], subType.Data4[7]);
 
 		hr = MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &uiNumerator, &uiDenominator);
 		if (FAILED(hr))

@@ -14,10 +14,22 @@
 #include <ks.h>
 #include <iostream>
 #include <atlcomcli.h>
+#include <iostream>
+#include <string>
 
+int g_threshold;
 
 // Main function for the console
-int main() {
+int main(int argc, char **argv) {
+
+	if (argc < 2)
+	{
+		printf("[Error] PLease follow the format below\n");
+		printf("CaptureEngine.exe threshold \n");
+		exit(1);
+	}
+	std::string threshold(argv[1]);
+	g_threshold = std::stoi(threshold);
 
 	// Calling the wWinMain function to start the GUI program
 	// Parameters:
@@ -25,7 +37,7 @@ int main() {
 	// NULL - Previous instance is not needed
 	// NULL - Command line parameters are not needed
 	// 1 - To show the window normally
-	//printf("Start MediaFoundation \n");
+
 	wWinMain(GetModuleHandle(NULL), NULL, NULL, 1);
 	
 	system("pause");
