@@ -374,6 +374,9 @@ namespace MainWindow
 		//Sleep(300);
 		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
 
+		//start caputre in initialization
+		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
+
     done:
         SafeRelease(&pAttributes);
         return fSuccess;
