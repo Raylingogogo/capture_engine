@@ -7,6 +7,7 @@
 
 #include "Capture.h"
 #include "resource.h"
+
 #include <string>
 
 IMFDXGIDeviceManager* g_pDXGIMan = NULL;
@@ -14,7 +15,6 @@ ID3D11Device*         g_pDX11Device = NULL;
 UINT                  g_ResetToken = 0;
 
 extern int g_threshold;
-extern FILE *stream;
 extern FILE *file_log;
 
 STDMETHODIMP CaptureManager::CaptureEngineCB::QueryInterface(REFIID riid, void** ppv)
@@ -118,8 +118,12 @@ STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
 	return cRef;
 }
 
+UINT32 uiWidth, uiHeight;
+int skipFrame = 0;
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
+	setlocale(LC_ALL, "en_US.UTF-8");
+
 	LONGLONG frameTimeStamp, frameDuration;
 	pSample->GetSampleTime(&frameTimeStamp); // micro second level
 	DWORD tickCount = (DWORD)(frameTimeStamp / 10000); //ms level
@@ -135,7 +139,6 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	static int frame_index = 0;
 	static DWORD average_sum[2] = { 0 };
 	errno_t err;
-	char file_buf[50] = { 0 };
 	char log_buf[250] = { 0 };
 
 	hr = pSample->GetTotalLength(&dwBufferCount);
@@ -145,35 +148,74 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		goto done;
 	}
 
-	// Get buffer from pSample
-	hr = pSample->ConvertToContiguousBuffer(&pSampleBuffer);
-	if (FAILED(hr))
-	{
-		goto done;
+	if (skipFrame == 30) {
+
+		// Get buffer from pSample
+		hr = pSample->ConvertToContiguousBuffer(&pSampleBuffer);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
+
+		pSampleBuffer->Lock(&pbInputData, &dwMaxLength, &dwCurrentLength);
+		printf("TimeStamp, duration = [%ld, %lld, %ld, %ld]\n", tickCount, frameDuration, bufferCount, dwMaxLength);
+
+		// Calculate average
+		for (DWORD i = 0; i < dwMaxLength; i++)
+			average_sum[frame_index] += *(pbInputData + i);
+		average_sum[frame_index] /= dwMaxLength;
+		
+		//inverse
+		for (DWORD i = 0; i < dwMaxLength/2; i++) {
+			BYTE tmp;
+			tmp = pbInputData[i];
+			pbInputData[i]= pbInputData[dwMaxLength - i -1];
+			pbInputData[dwMaxLength - i -1] = tmp;
+		}
+
+		HANDLE file;
+		BITMAPFILEHEADER fileHeader;
+		BITMAPINFOHEADER fileInfo;
+		DWORD write = 0;
+		if (frame_index == 0)
+			file = CreateFile(L"sample.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);  //Sets up the new bmp to be written to
+		else
+			file = CreateFile(L"sample1.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);  //Sets up the new bmp to be written to
+
+		fileHeader.bfType = 19778;                                                                    //Sets our type to BM or bmp
+		fileHeader.bfSize = sizeof(fileHeader.bfOffBits) + sizeof(RGBTRIPLE);                                                //Sets the size equal to the size of the header struct
+		fileHeader.bfReserved1 = 0;                                                                    //sets the reserves to 0
+		fileHeader.bfReserved2 = 0;
+		fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);                    //Sets offbits equal to the size of file and info header
+
+		fileInfo.biSize = sizeof(BITMAPINFOHEADER);
+		fileInfo.biWidth = uiWidth;
+		fileInfo.biHeight = uiHeight;
+		fileInfo.biPlanes = 1;
+		fileInfo.biBitCount = 24;
+		fileInfo.biCompression = BI_RGB;
+		fileInfo.biSizeImage = uiWidth * uiHeight * (24 / 8);
+		fileInfo.biXPelsPerMeter = 2400;
+		fileInfo.biYPelsPerMeter = 2400;
+		fileInfo.biClrImportant = 0;
+		fileInfo.biClrUsed = 0;
+
+		WriteFile(file, &fileHeader, sizeof(fileHeader), &write, NULL);
+		WriteFile(file, &fileInfo, sizeof(fileInfo), &write, NULL);
+
+		WriteFile(file, pbInputData, dwMaxLength, &write, NULL);
+
+		CloseHandle(file);
+
+		// Output result
+		pSampleBuffer->Unlock();
+		pSampleBuffer->Release();
+
+		frame_index++;
 	}
-
-	pSampleBuffer->Lock(&pbInputData, &dwMaxLength, &dwCurrentLength);
-	printf("TimeStamp, duration = [%ld, %lld, %ld, %ld]\n", tickCount, frameDuration, bufferCount, dwMaxLength);
-
-	// Stream File open
-	sprintf_s(file_buf, "outfile_%d.yuy2", frame_index);
-	if ((err = fopen_s(&stream, file_buf, "w+")) != 0)
-		printf("The stream file was not opened\n");
-	else
-		printf("The stream file was opened\n");
-
-	// Calculate average
-	for (DWORD i = 0; i < dwMaxLength; i++)
-		average_sum[frame_index] += *(pbInputData + i);
-	average_sum[frame_index] /= dwMaxLength;
-	fwrite(pbInputData, 1, dwMaxLength, stream);
-	// Output result
-	pSampleBuffer->Unlock();
-	pSampleBuffer->Release();
-
-	fclose(stream);
-
-	frame_index++;
+	else {
+		skipFrame++;
+	}
 
 	if (frame_index == 2)
 	{
@@ -453,7 +495,6 @@ void CaptureManager::OnRecordStopped(HRESULT& hrStatus)
 	m_bRecording = false;
 }
 
-
 HRESULT CaptureManager::StartPreview(bool capture_photo)
 {
 	if (m_pEngine == NULL)
@@ -473,7 +514,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 	DWORD dwSinkStreamIndex;
 	HRESULT hr = S_OK;
 	GUID subType;
-	UINT32 uiWidth, uiHeight, uiNumerator, uiDenominator, uiFps;
+	UINT32 uiNumerator, uiDenominator, uiFps;
 
 	// Get a pointer to the preview sink.
 	if (m_pPreview == NULL)
@@ -510,22 +551,22 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		}
 
 		// Keep the format of YUY2 (MEDIASUBTYPE_YUY2)
-		/*
-		hr = CloneVideoMediaType(pMediaType, MFVideoFormat_RGB32, &pMediaType2);
+		
+		hr = CloneVideoMediaType(pMediaType, MFVideoFormat_RGB24, &pMediaType2);
 
 		if (FAILED(hr))
 		{
 			goto done;
 		}
-		*/
+		
 		// Print current media type
-		pMediaType->GetGUID(MF_MT_SUBTYPE, &subType);
+		pMediaType2->GetGUID(MF_MT_SUBTYPE, &subType);
 		printf("[Format] GUID: %08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X\n",
 			subType.Data1, subType.Data2, subType.Data3,
 			subType.Data4[0], subType.Data4[1], subType.Data4[2], subType.Data4[3],
 			subType.Data4[4], subType.Data4[5], subType.Data4[6], subType.Data4[7]);
 
-		hr = MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &uiNumerator, &uiDenominator);
+		hr = MFGetAttributeRatio(pMediaType2, MF_MT_FRAME_RATE, &uiNumerator, &uiDenominator);
 		if (FAILED(hr))
 		{
 			goto done;
@@ -533,21 +574,21 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		uiFps = uiNumerator / uiDenominator;
 		printf("[Format] frame rate = %d \n", uiFps);
 
-		hr = MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &uiWidth, &uiHeight);
+		hr = MFGetAttributeSize(pMediaType2, MF_MT_FRAME_SIZE, &uiWidth, &uiHeight);
 		if (FAILED(hr))
 		{
 			goto done;
 		}
 		printf("[Format] width = %d, Height = %d\n", uiWidth, uiHeight);
 
-		hr = pMediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+		hr = pMediaType2->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
 		if (FAILED(hr))
 		{
 			goto done;
 		}
 
 		// Connect the video stream to the preview sink.
-		hr = m_pPreview->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, pMediaType, NULL, &dwSinkStreamIndex);
+		hr = m_pPreview->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, pMediaType2, NULL, &dwSinkStreamIndex);
 		if (FAILED(hr))
 		{
 			goto done;
