@@ -18,6 +18,8 @@
 #include <string>
 
 int g_threshold;
+FILE *stream;
+FILE *file_log;
 
 // Main function for the console
 int main(int argc, char **argv) {
@@ -40,7 +42,7 @@ int main(int argc, char **argv) {
 
 	wWinMain(GetModuleHandle(NULL), NULL, NULL, 1);
 	
-	system("pause");
+	//system("pause");
 	return 0;
 }
 
@@ -446,6 +448,24 @@ namespace MainWindow
         {
             goto done;
         }
+
+		// Check Camera enumeration. If camera is not found, exit and write out log
+		if (param.count == 0)
+		{
+			char log_buf[50] = { 0 };
+			printf("[ERROR] IR CAMERA NOT FOUND \n");
+			
+			// Stream File open
+			if ((fopen_s(&file_log, "result.txt", "w+")) != 0)
+				printf("The log file was not opened\n");
+
+			// Write to log file
+			sprintf_s(log_buf, "%s \n%s \n", "FAIL", "[ERROR] IR CAMERA NOT FOUND");
+			fwrite(log_buf, 1, sizeof(log_buf), file_log);
+			fclose(file_log);
+
+			exit(1);
+		}
 
         // Ask the user to select one.
 		/* Skip selection and use default

@@ -14,6 +14,8 @@ ID3D11Device*         g_pDX11Device = NULL;
 UINT                  g_ResetToken = 0;
 
 extern int g_threshold;
+extern FILE *stream;
+extern FILE *file_log;
 
 STDMETHODIMP CaptureManager::CaptureEngineCB::QueryInterface(REFIID riid, void** ppv)
 {
@@ -116,8 +118,6 @@ STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
 	return cRef;
 }
 
-FILE *stream;
-FILE *file_log;
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
 	LONGLONG frameTimeStamp, frameDuration;
@@ -183,11 +183,11 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		printf("Result = %d, %s", diff, diff > g_threshold? "PASS":"FAIL");
 
 		// Stream File open
-		if ((err = fopen_s(&file_log, "result.log", "w+")) != 0)
+		if ((err = fopen_s(&file_log, "result.txt", "w+")) != 0)
 			printf("The log file was not opened\n");
 
 		// Write to log file
-		sprintf_s(log_buf, "[frame 1, frame 2, diff] = [%d, %d, %d], %s \n", average_sum[0], average_sum[1], diff, diff > g_threshold ? "PASS" : "FAIL");
+		sprintf_s(log_buf, "%s \n[frame 1, frame 2, diff] = [%d, %d, %d]\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1]);
 		fwrite(log_buf, 1, sizeof(log_buf), file_log);
 		fclose(file_log);
 		exit(0);
