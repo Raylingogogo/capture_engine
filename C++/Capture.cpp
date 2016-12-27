@@ -229,7 +229,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 			printf("The log file was not opened\n");
 
 		// Write to log file
-		sprintf_s(log_buf, "%s \n[frame 1, frame 2, diff] = [%d, %d, %d]\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1]);
+		sprintf_s(log_buf, "%s \n[diff, frame 1, frame 2] = [%d, %d, %d]\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1]);
 		fwrite(log_buf, 1, sizeof(log_buf), file_log);
 		fclose(file_log);
 		exit(0);
