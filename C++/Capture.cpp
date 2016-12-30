@@ -118,7 +118,7 @@ STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
 	return cRef;
 }
 
-UINT32 uiWidth, uiHeight;
+UINT32 _gWidth, _gHeight;
 int skipFrame = 0;
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
@@ -189,12 +189,12 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);                    //Sets offbits equal to the size of file and info header
 
 		fileInfo.biSize = sizeof(BITMAPINFOHEADER);
-		fileInfo.biWidth = uiWidth;
-		fileInfo.biHeight = uiHeight;
+		fileInfo.biWidth = _gWidth;
+		fileInfo.biHeight = _gHeight;
 		fileInfo.biPlanes = 1;
 		fileInfo.biBitCount = 24;
 		fileInfo.biCompression = BI_RGB;
-		fileInfo.biSizeImage = uiWidth * uiHeight * (24 / 8);
+		fileInfo.biSizeImage = _gWidth * _gHeight * (24 / 8);
 		fileInfo.biXPelsPerMeter = 2400;
 		fileInfo.biYPelsPerMeter = 2400;
 		fileInfo.biClrImportant = 0;
@@ -573,13 +573,16 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		}
 		uiFps = uiNumerator / uiDenominator;
 		printf("[Format] frame rate = %d \n", uiFps);
-
+		
+		UINT32 uiWidth, uiHeight;
 		hr = MFGetAttributeSize(pMediaType2, MF_MT_FRAME_SIZE, &uiWidth, &uiHeight);
 		if (FAILED(hr))
 		{
 			goto done;
 		}
 		printf("[Format] width = %d, Height = %d\n", uiWidth, uiHeight);
+		_gWidth = uiWidth;
+		_gHeight = uiHeight;
 
 		hr = pMediaType2->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
 		if (FAILED(hr))
