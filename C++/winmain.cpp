@@ -375,7 +375,7 @@ namespace MainWindow
 		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
 
 		//start caputre in initialization
-		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
+		//PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
 
     done:
         SafeRelease(&pAttributes);
@@ -390,6 +390,9 @@ namespace MainWindow
         FillRect(hdc, &ps.rcPaint, (HBRUSH) (COLOR_WINDOW+1));
 
         EndPaint(hwnd, &ps);
+		//printf("on Paint\n");
+		Sleep(3000);
+		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
     }
 
 
@@ -629,6 +632,7 @@ done:
             ShowError(hwnd, IDS_ERR_RECORD, hr);
         }
         UpdateUI(hwnd);
+
     }
     void OnTakePhoto(HWND hwnd)
     {
