@@ -18,20 +18,23 @@
 #include <string>
 
 int g_threshold;
+int g_op_mode;
 FILE *stream;
 FILE *file_log;
 
 // Main function for the console
 int main(int argc, char **argv) {
 
-	if (argc < 2)
+	if (argc < 3)
 	{
 		printf("[Error] PLease follow the format below\n");
-		printf("CaptureEngine.exe threshold \n");
+		printf("CaptureEngine.exe [threshold] [OPmode]\n");
 		exit(1);
 	}
 	std::string threshold(argv[1]);
+	std::string op_mode(argv[2]);
 	g_threshold = std::stoi(threshold);
+	g_op_mode = std::stoi(op_mode);
 
 	// Calling the wWinMain function to start the GUI program
 	// Parameters:
@@ -375,8 +378,9 @@ namespace MainWindow
 		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
 
 		//start caputre in initialization
-		//PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
-
+		if (g_op_mode==0) {
+			PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
+		}
     done:
         SafeRelease(&pAttributes);
         return fSuccess;
@@ -391,8 +395,8 @@ namespace MainWindow
 
         EndPaint(hwnd, &ps);
 		//printf("on Paint\n");
-		Sleep(3000);
-		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
+		/*Sleep(3000);
+		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);*/
     }
 
 

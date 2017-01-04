@@ -148,7 +148,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		goto done;
 	}
 
-	if (skipFrame == 30) {
+	if (skipFrame == 60) {
 
 		// Get buffer from pSample
 		hr = pSample->ConvertToContiguousBuffer(&pSampleBuffer);
@@ -228,8 +228,10 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		if ((err = fopen_s(&file_log, "result.txt", "w+")) != 0)
 			printf("The log file was not opened\n");
 
+		char *outputVersion="version: 1.0.0";
+
 		// Write to log file
-		sprintf_s(log_buf, "%s \n[diff, frame 1, frame 2] = [%d, %d, %d]\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1]);
+		sprintf_s(log_buf, "%s \n[diff, frame 1, frame 2] = [%d, %d, %d]\n%s\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1], outputVersion);
 		fwrite(log_buf, 1, sizeof(log_buf), file_log);
 		fclose(file_log);
 		exit(0);
