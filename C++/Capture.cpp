@@ -228,7 +228,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		if ((err = fopen_s(&file_log, "result.txt", "w+")) != 0)
 			printf("The log file was not opened\n");
 
-		char *outputVersion="version: 1.0.0";
+		char *outputVersion="version: 20170104";
 
 		// Write to log file
 		sprintf_s(log_buf, "%s \n[diff, frame 1, frame 2] = [%d, %d, %d]\n%s\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1], outputVersion);
