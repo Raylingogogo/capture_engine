@@ -13,8 +13,14 @@
 IMFDXGIDeviceManager* g_pDXGIMan = NULL;
 ID3D11Device*         g_pDX11Device = NULL;
 UINT                  g_ResetToken = 0;
+HWND g_hwndPreviewCopy;
 
+
+//extern parameters define in winmain.cpp
 extern int g_threshold;
+extern int g_op_mode;
+extern int g_countToCapture;
+extern WCHAR *g_toolVersion;
 extern FILE *file_log;
 
 STDMETHODIMP CaptureManager::CaptureEngineCB::QueryInterface(REFIID riid, void** ppv)
@@ -118,11 +124,30 @@ STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
 	return cRef;
 }
 
-UINT32 _gWidth, _gHeight;
-int skipFrame = 0;
+int evalueCount=0;
+int evalueArr[128];
+int BrightCount=-1;
+
+int skipFrame = 30;
+int frame_index = 0;
+UINT32 g_Width, g_Height;
+BITMAPINFO g_BitmapInfo;
+BYTE *g_pbInputData = NULL;
+bool  g_Capture_photo=FALSE;
+DWORD average_sum[2] = { 0 };
+HANDLE g_hSemaphore;
+
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
-	setlocale(LC_ALL, "en_US.UTF-8");
+	//printf("evalueCount %d, g_countToCapture %d\n", evalueCount, g_countToCapture);
+	if (evalueCount==g_countToCapture && g_countToCapture!=-1) {
+		g_Capture_photo = TRUE;
+		printf("start Capture, count=%d\n", g_countToCapture);
+	}
+
+	WaitForSingleObject(
+		g_hSemaphore,   // handle to semaphore
+		10L);           // zero-second time-out interval
 
 	LONGLONG frameTimeStamp, frameDuration;
 	pSample->GetSampleTime(&frameTimeStamp); // micro second level
@@ -134,10 +159,8 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	HRESULT hr = S_OK;
 	DWORD	dwBufferCount = 0;
 	IMFMediaBuffer *pSampleBuffer = NULL;
-	BYTE	*pbInputData = NULL;
+	BYTE *pbInputData;
 	DWORD dwCurrentLength, dwMaxLength;
-	static int frame_index = 0;
-	static DWORD average_sum[2] = { 0 };
 	errno_t err;
 	char log_buf[250] = { 0 };
 
@@ -148,97 +171,166 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		goto done;
 	}
 
-	if (skipFrame == 60) {
-
-		// Get buffer from pSample
-		hr = pSample->ConvertToContiguousBuffer(&pSampleBuffer);
-		if (FAILED(hr))
-		{
-			goto done;
-		}
-
-		pSampleBuffer->Lock(&pbInputData, &dwMaxLength, &dwCurrentLength);
-		printf("TimeStamp, duration = [%ld, %lld, %ld, %ld]\n", tickCount, frameDuration, bufferCount, dwMaxLength);
-
-		// Calculate average
-		for (DWORD i = 0; i < dwMaxLength; i++)
-			average_sum[frame_index] += *(pbInputData + i);
-		average_sum[frame_index] /= dwMaxLength;
-		
-		//inverse
-		for (DWORD i = 0; i < dwMaxLength/2; i++) {
-			BYTE tmp;
-			tmp = pbInputData[i];
-			pbInputData[i]= pbInputData[dwMaxLength - i -1];
-			pbInputData[dwMaxLength - i -1] = tmp;
-		}
-
-		HANDLE file;
-		BITMAPFILEHEADER fileHeader;
-		BITMAPINFOHEADER fileInfo;
-		DWORD write = 0;
-		if (frame_index == 0)
-			file = CreateFile(L"sample.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);  //Sets up the new bmp to be written to
-		else
-			file = CreateFile(L"sample1.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);  //Sets up the new bmp to be written to
-
-		fileHeader.bfType = 19778;                                                                    //Sets our type to BM or bmp
-		fileHeader.bfSize = sizeof(fileHeader.bfOffBits) + sizeof(RGBTRIPLE);                                                //Sets the size equal to the size of the header struct
-		fileHeader.bfReserved1 = 0;                                                                    //sets the reserves to 0
-		fileHeader.bfReserved2 = 0;
-		fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);                    //Sets offbits equal to the size of file and info header
-
-		fileInfo.biSize = sizeof(BITMAPINFOHEADER);
-		fileInfo.biWidth = _gWidth;
-		fileInfo.biHeight = _gHeight;
-		fileInfo.biPlanes = 1;
-		fileInfo.biBitCount = 24;
-		fileInfo.biCompression = BI_RGB;
-		fileInfo.biSizeImage = _gWidth * _gHeight * (24 / 8);
-		fileInfo.biXPelsPerMeter = 2400;
-		fileInfo.biYPelsPerMeter = 2400;
-		fileInfo.biClrImportant = 0;
-		fileInfo.biClrUsed = 0;
-
-		WriteFile(file, &fileHeader, sizeof(fileHeader), &write, NULL);
-		WriteFile(file, &fileInfo, sizeof(fileInfo), &write, NULL);
-
-		WriteFile(file, pbInputData, dwMaxLength, &write, NULL);
-
-		CloseHandle(file);
-
-		// Output result
-		pSampleBuffer->Unlock();
-		pSampleBuffer->Release();
-
-		frame_index++;
-	}
-	else {
-		skipFrame++;
-	}
-
-	if (frame_index == 2)
+	// Get buffer from pSample
+	hr = pSample->ConvertToContiguousBuffer(&pSampleBuffer);
+	if (FAILED(hr))
 	{
-		int diff = abs((int)(average_sum[0] - average_sum[1]));
-		printf("frame 0 average = %d \n", average_sum[0]);
-		printf("frame 1 average = %d \n", average_sum[1]);
-		printf("Result = %d, %s", diff, diff > g_threshold? "PASS":"FAIL");
-
-		// Stream File open
-		if ((err = fopen_s(&file_log, "result.txt", "w+")) != 0)
-			printf("The log file was not opened\n");
-
-		char *outputVersion="version: 20170104";
-
-		// Write to log file
-		sprintf_s(log_buf, "%s \n[diff, frame 1, frame 2] = [%d, %d, %d]\n%s\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1], outputVersion);
-		fwrite(log_buf, 1, sizeof(log_buf), file_log);
-		fclose(file_log);
-		exit(0);
+		goto done;
 	}
 
+	pSampleBuffer->Lock(&pbInputData, &dwMaxLength, &dwCurrentLength);
+	//printf("TimeStamp, duration = [%ld, %lld, %ld, %ld]\n", tickCount, frameDuration, bufferCount, dwMaxLength);
+	g_pbInputData = pbInputData;
+
+	// Calculate average
+	average_sum[frame_index] = 0;
+	for (DWORD i = 0; i < dwMaxLength; i++)
+		average_sum[frame_index] += *(pbInputData + i);
+	average_sum[frame_index] /= dwMaxLength;
+
+	if (BrightCount != -1) {
+		if (g_Capture_photo) {
+
+			if ((frame_index == 0 && (evalueCount%2 == BrightCount))      ||//light one
+				 frame_index == 1 ) {//next one
+
+				printf("frame index %d, this evalue Count %d, BrightCount %d, avg %d\n", frame_index, evalueCount, BrightCount, average_sum[frame_index]);
+
+				//inverse
+				for (DWORD i = 0; i < dwMaxLength / 2; i++) {
+					BYTE tmp;
+					tmp = pbInputData[i];
+					pbInputData[i] = pbInputData[dwMaxLength - i - 1];
+					pbInputData[dwMaxLength - i - 1] = tmp;
+				}
+
+				setlocale(LC_ALL, "en_US.UTF-8");
+				HANDLE file;
+
+				BITMAPFILEHEADER fileHeader;
+				BITMAPINFOHEADER fileInfo;
+
+				DWORD write = 0;
+				if (frame_index == 0)
+					file = CreateFile(L"light.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);  //Sets up the new bmp to be written to
+				else
+					file = CreateFile(L"dark.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);  //Sets up the new bmp to be written to
+				
+				fileHeader.bfType = 19778;                                                                    //Sets our type to BM or bmp
+				fileHeader.bfSize = sizeof(fileHeader.bfOffBits) + sizeof(RGBTRIPLE);                                                //Sets the size equal to the size of the header struct
+				fileHeader.bfReserved1 = 0;                                                                    //sets the reserves to 0
+				fileHeader.bfReserved2 = 0;
+				fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);                    //Sets offbits equal to the size of file and info header
+
+				fileInfo = g_BitmapInfo.bmiHeader;
+				fileInfo.biXPelsPerMeter = 2400;
+				fileInfo.biYPelsPerMeter = 2400;
+				fileInfo.biClrImportant = 0;
+				fileInfo.biClrUsed = 0;
+
+				WriteFile(file, &fileHeader, sizeof(fileHeader), &write, NULL);
+				WriteFile(file, &fileInfo, sizeof(fileInfo), &write, NULL);
+
+				WriteFile(file, pbInputData, dwMaxLength, &write, NULL);
+
+				frame_index++;
+				if (frame_index == 2)
+				{
+					int diff = abs((int)(average_sum[0] - average_sum[1]));
+					printf("frame 0 average = %d \n", average_sum[0]);
+					printf("frame 1 average = %d \n", average_sum[1]);
+					printf("Result = %d, %s", diff, diff > g_threshold ? "PASS" : "FAIL");
+
+					// Stream File open
+					if ((err = fopen_s(&file_log, "result.txt", "w+")) != 0)
+						printf("The log file was not opened\n");
+
+					//char *outputVersion = "version: 20170106";
+					_bstr_t b(g_toolVersion);
+					char *outputVersion = b;
+
+					// Write to log file
+					sprintf_s(log_buf, "%s \n[diff, frame 1, frame 2] = [%d, %d, %d]\n%s\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1], outputVersion);
+					fwrite(log_buf, 1, sizeof(log_buf), file_log);
+					fclose(file_log);
+					exit(0);
+					//system("PAUSE");
+				}
+			}
+			else {
+				printf("skip this frame %d, avg %d\n", evalueCount, average_sum[frame_index]);
+			}
+		} else {//start display
+			switch (g_op_mode)
+			{
+			case 1:
+				RedrawWindow(g_hwndPreviewCopy, NULL, NULL, RDW_INTERNALPAINT | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+				break;
+			case 2:
+				if (BrightCount != -1) {
+					if (evalueCount % 2 == BrightCount) { //display light one
+						RedrawWindow(g_hwndPreviewCopy, NULL, NULL, RDW_INTERNALPAINT | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+					}
+				}
+				break;
+			case 3:
+				if (BrightCount != -1) {
+					if (evalueCount % 2 == ((BrightCount + 1)%2)) { //display dark one
+						RedrawWindow(g_hwndPreviewCopy, NULL, NULL, RDW_INTERNALPAINT | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+					}
+				}
+				break;
+			default:
+				break;
+			}
+		}
+	}
+
+	//add avg to evaluation array
+	if (evalueCount < skipFrame)
+		evalueArr[evalueCount] = average_sum[frame_index];
+
+	//judge the light or dark
+	if (evalueCount == skipFrame-1) {
+		printf("prepare rendering ok\n");
+		int oddSum;
+		int evenSum;
+		for (int i = 0; i <= evalueCount; i++) {
+			//printf("i %d, avg %d\n", i, evalueArr[i]);
+			if (i % 2 == 1) {
+				oddSum += evalueArr[i];
+			}
+			else {
+				evenSum += evalueArr[i];
+			}
+
+			if (i == evalueCount) { // last one
+				BrightCount = (oddSum > evenSum) ? 1 : 0;
+
+				//init bitmap
+				ZeroMemory(&g_BitmapInfo, sizeof(BITMAPINFO));
+				g_BitmapInfo.bmiHeader.biBitCount = 24;
+				g_BitmapInfo.bmiHeader.biWidth = g_Width;
+				g_BitmapInfo.bmiHeader.biHeight = g_Height;
+				g_BitmapInfo.bmiHeader.biPlanes = 1;
+				g_BitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+				g_BitmapInfo.bmiHeader.biSizeImage = g_Width * g_Height * (24 / 8);;
+				g_BitmapInfo.bmiHeader.biCompression = BI_RGB;
+			}
+		}
+	}
+
+	evalueCount++;
+
+	// Output result
+	pSampleBuffer->Unlock();
+	pSampleBuffer->Release();
 
 done:
+	ReleaseSemaphore(
+		g_hSemaphore,  // handle to semaphore
+		1,            // increase count by one
+		NULL);
 	return hr;
 }
 
@@ -339,9 +431,21 @@ CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 		goto Exit;
 	}
 
-
 	m_pCallback->m_pManager = this;
 	m_hwndPreview = hwndPreview;
+	g_hwndPreviewCopy = hwndPreview;
+	
+	g_hSemaphore = CreateSemaphore(
+		NULL,           // default security attributes
+		1,  // initial count
+		1,  // maximum count
+		NULL);          // unnamed semaphore
+
+	if (g_hSemaphore == NULL)
+	{
+		printf("CreateSemaphore error: %d\n", GetLastError());
+		return 1;
+	}
 
 	//Create a D3D Manager
 	hr = CreateD3DManager();
@@ -533,11 +637,11 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			goto done;
 		}
 
-		hr = m_pPreview->SetRenderHandle(m_hwndPreview);
+		/*hr = m_pPreview->SetRenderHandle(m_hwndPreview);
 		if (FAILED(hr))
 		{
 			goto done;
-		}
+		}*/
 
 		hr = m_pEngine->GetSource(&pSource);
 		if (FAILED(hr))
@@ -553,14 +657,14 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		}
 
 		// Keep the format of YUY2 (MEDIASUBTYPE_YUY2)
-		
+
 		hr = CloneVideoMediaType(pMediaType, MFVideoFormat_RGB24, &pMediaType2);
 
 		if (FAILED(hr))
 		{
 			goto done;
 		}
-		
+
 		// Print current media type
 		pMediaType2->GetGUID(MF_MT_SUBTYPE, &subType);
 		printf("[Format] GUID: %08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X\n",
@@ -575,7 +679,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		}
 		uiFps = uiNumerator / uiDenominator;
 		printf("[Format] frame rate = %d \n", uiFps);
-		
+
 		UINT32 uiWidth, uiHeight;
 		hr = MFGetAttributeSize(pMediaType2, MF_MT_FRAME_SIZE, &uiWidth, &uiHeight);
 		if (FAILED(hr))
@@ -583,8 +687,8 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			goto done;
 		}
 		printf("[Format] width = %d, Height = %d\n", uiWidth, uiHeight);
-		_gWidth = uiWidth;
-		_gHeight = uiHeight;
+		g_Width = uiWidth;
+		g_Height = uiHeight;
 
 		hr = pMediaType2->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
 		if (FAILED(hr))
@@ -598,16 +702,17 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		{
 			goto done;
 		}
-	}
 
-	// Set callback of sink
-	if (capture_photo)
-	{
-		printf("Capture Frame mode \n");
+		// Set callback of sink
 		hr = m_pPreview->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback);
+
+		hr = m_pEngine->StartPreview();
 	}
 
-	hr = m_pEngine->StartPreview();
+	g_Capture_photo = capture_photo;
+	if (capture_photo) 		
+		printf("Capture Frame mode \n");
+	
 	if (!m_fPowerRequestSet && m_hpwrRequest != INVALID_HANDLE_VALUE)
 	{
 		// NOTE:  By calling this, on SOC systems (AOAC enabled), we're asking the system to not go
@@ -630,6 +735,15 @@ done:
 
 HRESULT CaptureManager::StopPreview()
 {
+	//init capture parameters
+	evalueCount = 0;
+    BrightCount = -1;
+	frame_index = 0;
+	average_sum[0]= 0;
+	average_sum[1]= 0;
+	CloseHandle(g_hSemaphore);
+
+	//close engine
 	HRESULT hr = S_OK;
 
 	if (m_pEngine == NULL)
@@ -1024,3 +1138,21 @@ done:
 
 
 
+HRESULT CaptureManager::UpdateVideo(HDC hdc)
+{
+	if (m_pPreview)
+	{
+		int rv = StretchDIBits(hdc, g_Width, g_Height, -g_Width, -g_Height, 0, 0, g_Width, g_Height,
+			g_pbInputData, &g_BitmapInfo,
+			DIB_RGB_COLORS, SRCCOPY);
+		if (rv == 0) {
+			printf("StretchDIBits failed\n");
+		}
+		//return m_pPreview->UpdateVideo(NULL, NULL, NULL);
+		return S_OK;
+	}
+	else
+	{
+		return S_OK;
+	}
+}

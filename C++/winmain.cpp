@@ -19,22 +19,26 @@
 
 int g_threshold;
 int g_op_mode;
-FILE *stream;
+int g_countToCapture;
+WCHAR *g_toolVersion = L"version: 20170106";
 FILE *file_log;
 
 // Main function for the console
 int main(int argc, char **argv) {
 
-	if (argc < 3)
+	if (argc < 4)
 	{
 		printf("[Error] PLease follow the format below\n");
-		printf("CaptureEngine.exe [threshold] [OPmode]\n");
+		printf("CaptureEngine.exe [threshold] [OPmode] [countToCapture]\n");
 		exit(1);
 	}
 	std::string threshold(argv[1]);
 	std::string op_mode(argv[2]);
+	std::string countToCapture(argv[3]);
+
 	g_threshold = std::stoi(threshold);
 	g_op_mode = std::stoi(op_mode);
+	g_countToCapture = std::stoi(countToCapture);
 
 	// Calling the wWinMain function to start the GUI program
 	// Parameters:
@@ -44,7 +48,7 @@ int main(int argc, char **argv) {
 	// 1 - To show the window normally
 
 	wWinMain(GetModuleHandle(NULL), NULL, NULL, 1);
-	
+
 	//system("pause");
 	return 0;
 }
@@ -69,60 +73,60 @@ INT_PTR CALLBACK ChooseDeviceDlgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 
 INT WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*/, _In_ LPWSTR /*lpCmdLine*/, _In_ INT nCmdShow)
 {
-    bool bCoInit = false, bMFStartup = false;
+	bool bCoInit = false, bMFStartup = false;
 
-    // Initialize the common controls
-    const INITCOMMONCONTROLSEX icex = { sizeof(INITCOMMONCONTROLSEX), ICC_WIN95_CLASSES };
-    InitCommonControlsEx(&icex); 
+	// Initialize the common controls
+	const INITCOMMONCONTROLSEX icex = { sizeof(INITCOMMONCONTROLSEX), ICC_WIN95_CLASSES };
+	InitCommonControlsEx(&icex);
 
-    // Note: The shell common File dialog requires apartment threading.
-    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
-    bCoInit = true;
+	// Note: The shell common File dialog requires apartment threading.
+	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	if (FAILED(hr))
+	{
+		goto done;
+	}
+	bCoInit = true;
 
-    hr = MFStartup(MF_VERSION);
-    if (FAILED(hr))
-    {
-        goto done;
-    }
+	hr = MFStartup(MF_VERSION);
+	if (FAILED(hr))
+	{
+		goto done;
+	}
 
-    bMFStartup = true;
+	bMFStartup = true;
 
-    HWND hwnd = CreateMainWindow(hInstance);
-    if (hwnd == 0)
-    {
-        ShowError(NULL, L"CreateMainWindow failed.", hr);
-        goto done;
-    }
+	HWND hwnd = CreateMainWindow(hInstance);
+	if (hwnd == 0)
+	{
+		ShowError(NULL, L"CreateMainWindow failed.", hr);
+		goto done;
+	}
 
-    ShowWindow(hwnd, nCmdShow);
+	ShowWindow(hwnd, nCmdShow);
 
-    // Run the message loop.
+	// Run the message loop.
 
-    MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0))
-    {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
+	MSG msg;
+	while (GetMessage(&msg, NULL, 0, 0))
+	{
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
 
 done:
-    if (FAILED(hr))
-    {
-        ShowError(NULL, L"Failed to start application", hr);
-    }
-    if (bMFStartup)
-    {
-        MFShutdown();
-    }
-    if (bCoInit)
-    {
-        CoUninitialize();
-    }
-    return 0;
+	if (FAILED(hr))
+	{
+		ShowError(NULL, L"Failed to start application", hr);
+	}
+	if (bMFStartup)
+	{
+		MFShutdown();
+	}
+	if (bCoInit)
+	{
+		CoUninitialize();
+	}
+	return 0;
 }
 
 
@@ -135,115 +139,115 @@ HRESULT OnOK(HWND hwnd, ChooseDeviceParam *pParam);
 
 INT_PTR CALLBACK ChooseDeviceDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    static ChooseDeviceParam *pParam = NULL;
+	static ChooseDeviceParam *pParam = NULL;
 
-    switch (msg)
-    {
-    case WM_INITDIALOG:
-        pParam = (ChooseDeviceParam*)lParam;
-        OnInitDialog(hwnd, pParam);
-        return TRUE;
+	switch (msg)
+	{
+	case WM_INITDIALOG:
+		pParam = (ChooseDeviceParam*)lParam;
+		OnInitDialog(hwnd, pParam);
+		return TRUE;
 
-    case WM_COMMAND:
-        switch(LOWORD(wParam))
-        {
-        case IDOK:
-            OnOK(hwnd, pParam);
-            EndDialog(hwnd, LOWORD(wParam));
-            return TRUE;
+	case WM_COMMAND:
+		switch (LOWORD(wParam))
+		{
+		case IDOK:
+			OnOK(hwnd, pParam);
+			EndDialog(hwnd, LOWORD(wParam));
+			return TRUE;
 
-        case IDCANCEL:
-            EndDialog(hwnd, LOWORD(wParam));
-            return TRUE;
-        }
-        break;
-    }
+		case IDCANCEL:
+			EndDialog(hwnd, LOWORD(wParam));
+			return TRUE;
+		}
+		break;
+	}
 
-    return FALSE;
+	return FALSE;
 }
 
 // Handler for WM_INITDIALOG
 
 HRESULT OnInitDialog(HWND hwnd, ChooseDeviceParam *pParam)
 {
-    HRESULT hr = S_OK;
+	HRESULT hr = S_OK;
 
-    HWND hList = GetDlgItem(hwnd, IDC_DEVICE_LIST);
+	HWND hList = GetDlgItem(hwnd, IDC_DEVICE_LIST);
 
-    // Display a list of the devices.
+	// Display a list of the devices.
 
-    for (DWORD i = 0; i < pParam->count; i++)
-    {
-        WCHAR *szFriendlyName = NULL;
-        UINT32 cchName;
+	for (DWORD i = 0; i < pParam->count; i++)
+	{
+		WCHAR *szFriendlyName = NULL;
+		UINT32 cchName;
 
-        hr = pParam->ppDevices[i]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
-            &szFriendlyName, &cchName);
-        if (FAILED(hr))
-        {
-            break;
-        }
+		hr = pParam->ppDevices[i]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
+			&szFriendlyName, &cchName);
+		if (FAILED(hr))
+		{
+			break;
+		}
 
-        int index = ListBox_AddString(hList, szFriendlyName);
+		int index = ListBox_AddString(hList, szFriendlyName);
 
-        ListBox_SetItemData(hList, index, i);
+		ListBox_SetItemData(hList, index, i);
 
-        CoTaskMemFree(szFriendlyName);
-    }
+		CoTaskMemFree(szFriendlyName);
+	}
 
-    // Assume no selection for now.
-    pParam->selection = (UINT32)-1;
+	// Assume no selection for now.
+	pParam->selection = (UINT32)-1;
 
-    if (pParam->count == 0)
-    {
-        // If there are no devices, disable the "OK" button.
-        EnableWindow(GetDlgItem(hwnd, IDOK), FALSE);
-    }
-    else
-    {
-        // Select the first device in the list.
-        ListBox_SetCurSel(hList, 0);
-    }
+	if (pParam->count == 0)
+	{
+		// If there are no devices, disable the "OK" button.
+		EnableWindow(GetDlgItem(hwnd, IDOK), FALSE);
+	}
+	else
+	{
+		// Select the first device in the list.
+		ListBox_SetCurSel(hList, 0);
+	}
 
-    return hr;
+	return hr;
 }
 
 // Handler for the OK button
 
 HRESULT OnOK(HWND hwnd, ChooseDeviceParam *pParam)
 {
-    HWND hList = GetDlgItem(hwnd, IDC_DEVICE_LIST);
+	HWND hList = GetDlgItem(hwnd, IDC_DEVICE_LIST);
 
-    // Get the current selection and return it to the application.
-    int sel = ListBox_GetCurSel(hList);
+	// Get the current selection and return it to the application.
+	int sel = ListBox_GetCurSel(hList);
 
-    if (sel != LB_ERR)
-    {
-        pParam->selection = (UINT32)ListBox_GetItemData(hList, sel);
-    }
+	if (sel != LB_ERR)
+	{
+		pParam->selection = (UINT32)ListBox_GetItemData(hList, sel);
+	}
 
-    return S_OK;
+	return S_OK;
 }
 
 
 HWND CreateStatusBar(HWND hParent, UINT nID)
 {
-    return CreateStatusWindow(WS_CHILD | WS_VISIBLE, L"", hParent, nID);
+	return CreateStatusWindow(WS_CHILD | WS_VISIBLE, L"", hParent, nID);
 }
 
 BOOL StatusSetText(HWND hwnd, int iPart, const TCHAR* szText, BOOL bNoBorders = FALSE, BOOL bPopOut = FALSE)
 {
-    UINT flags = 0;
-    if (bNoBorders) 
-    { 
-        flags |= SBT_NOBORDERS;
-    }
-    if (bPopOut)
-    {
-        flags |= SBT_POPOUT;
-    }
+	UINT flags = 0;
+	if (bNoBorders)
+	{
+		flags |= SBT_NOBORDERS;
+	}
+	if (bPopOut)
+	{
+		flags |= SBT_POPOUT;
+	}
 
-    return (BOOL)SendMessage(hwnd, SB_SETTEXT, (WPARAM)(iPart | flags), (LPARAM)szText);
+	return (BOOL)SendMessage(hwnd, SB_SETTEXT, (WPARAM)(iPart | flags), (LPARAM)szText);
 }
 
 
@@ -252,124 +256,131 @@ BOOL StatusSetText(HWND hwnd, int iPart, const TCHAR* szText, BOOL bNoBorders = 
 
 namespace MainWindow
 {
-    HWND hPreview = NULL;
-    HWND hStatus = NULL;
-    bool bRecording = false;
-    bool bPreviewing = false;
-    IMFActivate* pSelectedDevice = NULL;
+	HWND hPreview = NULL;
+	HWND hStatus = NULL;
+	bool bRecording = false;
+	bool bPreviewing = false;
+	IMFActivate* pSelectedDevice = NULL;
 	static bool capture_photo = 0;
-     
-    wchar_t PhotoFileName[MAX_PATH];
 
-    inline void _SetStatusText(const WCHAR *szStatus)
-    {
-        StatusSetText(hStatus, 0, szStatus);
-    }
+	wchar_t PhotoFileName[MAX_PATH];
 
-    void OnChooseDevice(HWND hwnd);
-    BOOL OnCreate(HWND hwnd, LPCREATESTRUCT lpCreateStruct);
-    void OnPaint(HWND hwnd);
-    void OnSize(HWND hwnd, UINT state, int cx, int cy);
-    void OnDestroy(HWND hwnd);
-    void OnChooseDevice(HWND hwnd);
-    void OnStartRecord(HWND hwnd);
-    void OnStopRecord(HWND hwnd);
-    void OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify);
+	inline void _SetStatusText(const WCHAR *szStatus)
+	{
+		StatusSetText(hStatus, 0, szStatus);
+	}
 
-    void UpdateUI(HWND hwnd)
-    {
-        if (g_pEngine->IsRecording() != bRecording)
-        {
-            bRecording = g_pEngine->IsRecording();
-            if (bRecording)
-            {
-                SetMenuItemText(GetMenu(hwnd), ID_CAPTURE_RECORD, L"Stop Recording");
-            }
-            else
-            {
-                SetMenuItemText(GetMenu(hwnd), ID_CAPTURE_RECORD, L"Start Recording");
-            }
-        }
+	void OnChooseDevice(HWND hwnd);
+	BOOL OnCreate(HWND hwnd, LPCREATESTRUCT lpCreateStruct);
+	void OnPaint(HWND hwnd);
+	void OnSize(HWND hwnd, UINT state, int cx, int cy);
+	void OnDestroy(HWND hwnd);
+	void OnChooseDevice(HWND hwnd);
+	void OnStartRecord(HWND hwnd);
+	void OnStopRecord(HWND hwnd);
+	void OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify);
 
-        if (g_pEngine->IsPreviewing() != bPreviewing)
-        {
-            bPreviewing = g_pEngine->IsPreviewing();
-            if (bPreviewing)
-            {
-                SetMenuItemText(GetMenu(hwnd), ID_CAPTURE_PREVIEW, L"Stop Preview");
-            }
-            else
-            {
-                SetMenuItemText(GetMenu(hwnd), ID_CAPTURE_PREVIEW, L"Start Preview");
-            }
-        }
-        BOOL bEnableRecording = TRUE;
-        BOOL bEnablePhoto = TRUE;
+	void UpdateUI(HWND hwnd)
+	{
+		if (g_pEngine->IsRecording() != bRecording)
+		{
+			bRecording = g_pEngine->IsRecording();
+			if (bRecording)
+			{
+				SetMenuItemText(GetMenu(hwnd), ID_CAPTURE_RECORD, L"Stop Recording");
+			}
+			else
+			{
+				SetMenuItemText(GetMenu(hwnd), ID_CAPTURE_RECORD, L"Start Recording");
+			}
+		}
 
-        if (bRecording)
-        {
-            _SetStatusText(L"Recording");
-        }
-        else if (g_pEngine->IsPreviewing())
-        {
-            _SetStatusText(L"Previewing");
-        }
-        else
-        {
-            _SetStatusText(L"Please select a device or start preview (using the default device).");
-            bEnableRecording = FALSE;
-        }
+		if (g_pEngine->IsPreviewing() != bPreviewing)
+		{
+			bPreviewing = g_pEngine->IsPreviewing();
+			if (bPreviewing)
+			{
+				SetMenuItemText(GetMenu(hwnd), ID_CAPTURE_PREVIEW, L"Stop Preview");
+			}
+			else
+			{
+				SetMenuItemText(GetMenu(hwnd), ID_CAPTURE_PREVIEW, L"Start Preview");
+			}
+		}
+		BOOL bEnableRecording = TRUE;
+		BOOL bEnablePhoto = TRUE;
 
-        if (!g_pEngine->IsPreviewing() || g_pEngine->IsPhotoPending())
-        {
-            bEnablePhoto = FALSE;
-        }
+		if (bRecording)
+		{
+			_SetStatusText(L"Recording");
+		}
+		else if (g_pEngine->IsPreviewing())
+		{
+			_SetStatusText(L"Previewing");
+		}
+		else
+		{
+			_SetStatusText(L"Please select a device or start preview (using the default device).");
+			bEnableRecording = FALSE;
+		}
 
-        EnableMenuItem(GetMenu(hwnd), ID_CAPTURE_RECORD, bEnableRecording ? MF_ENABLED : MF_GRAYED);
-        EnableMenuItem(GetMenu(hwnd), ID_CAPTURE_TAKEPHOTO, bEnablePhoto ? MF_ENABLED : MF_GRAYED);
-    }
+		if (!g_pEngine->IsPreviewing() || g_pEngine->IsPhotoPending())
+		{
+			bEnablePhoto = FALSE;
+		}
+
+		EnableMenuItem(GetMenu(hwnd), ID_CAPTURE_RECORD, bEnableRecording ? MF_ENABLED : MF_GRAYED);
+		EnableMenuItem(GetMenu(hwnd), ID_CAPTURE_TAKEPHOTO, bEnablePhoto ? MF_ENABLED : MF_GRAYED);
+	}
 
 
-    BOOL OnCreate(HWND hwnd, LPCREATESTRUCT /*lpCreateStruct*/)
-    {
-        BOOL                fSuccess = FALSE;
-        IMFAttributes*      pAttributes = NULL;
-        HRESULT             hr = S_OK;
+	BOOL OnCreate(HWND hwnd, LPCREATESTRUCT /*lpCreateStruct*/)
+	{
+		BOOL                fSuccess = FALSE;
+		IMFAttributes*      pAttributes = NULL;
+		HRESULT             hr = S_OK;
 
-        hPreview = CreatePreviewWindow(GetModuleHandle(NULL), hwnd);
-        if (hPreview == NULL)
-        {
-            goto done;
-        }
+		WCHAR titleName[100] = L"[IR Test Tool] ";
+		wcscat(titleName, g_toolVersion);
 
-        hStatus = CreateStatusBar(hwnd, IDC_STATUS_BAR);
-        if (hStatus == NULL)
-        {
-            goto done;
-        }
+		//set window size and title
+		SetWindowText(hwnd, titleName);
+		SetWindowPos(hwnd, HWND_TOPMOST, 200, 100, 500, 500, SWP_NOZORDER);
 
-        if (FAILED(CaptureManager::CreateInstance(hwnd, &g_pEngine)))
-        {
-            goto done;
-        }
-    
-        hr = g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);  
-        if (FAILED(hr))
-        {
-            ShowError(hwnd, IDS_ERR_SET_DEVICE, hr);
-            goto done;
-        }
+		hPreview = CreatePreviewWindow(GetModuleHandle(NULL), hwnd);
+		if (hPreview == NULL)
+		{
+			goto done;
+		}
 
-        // Register for connected standy changes.  This should come through the normal
-        // WM_POWERBROADCAST messages that we're already handling below.
-        // We also want to hook into the monitor on/off notification for AOAC (SOC) systems.
-        g_hPowerNotify = RegisterSuspendResumeNotification((HANDLE)hwnd, DEVICE_NOTIFY_WINDOW_HANDLE);
-        g_hPowerNotifyMonitor = RegisterPowerSettingNotification((HANDLE)hwnd, &GUID_MONITOR_POWER_ON, DEVICE_NOTIFY_WINDOW_HANDLE);
-        ZeroMemory(&g_pwrCaps, sizeof(g_pwrCaps));
-        GetPwrCapabilities(&g_pwrCaps);
+		hStatus = CreateStatusBar(hwnd, IDC_STATUS_BAR);
+		if (hStatus == NULL)
+		{
+			goto done;
+		}
 
-        UpdateUI(hwnd);
-        fSuccess = TRUE;
+		if (FAILED(CaptureManager::CreateInstance(hwnd, &g_pEngine)))
+		{
+			goto done;
+		}
+
+		hr = g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
+		if (FAILED(hr))
+		{
+			ShowError(hwnd, IDS_ERR_SET_DEVICE, hr);
+			goto done;
+		}
+
+		// Register for connected standy changes.  This should come through the normal
+		// WM_POWERBROADCAST messages that we're already handling below.
+		// We also want to hook into the monitor on/off notification for AOAC (SOC) systems.
+		g_hPowerNotify = RegisterSuspendResumeNotification((HANDLE)hwnd, DEVICE_NOTIFY_WINDOW_HANDLE);
+		g_hPowerNotifyMonitor = RegisterPowerSettingNotification((HANDLE)hwnd, &GUID_MONITOR_POWER_ON, DEVICE_NOTIFY_WINDOW_HANDLE);
+		ZeroMemory(&g_pwrCaps, sizeof(g_pwrCaps));
+		GetPwrCapabilities(&g_pwrCaps);
+
+		UpdateUI(hwnd);
+		fSuccess = TRUE;
 
 		// Post message to enum device
 		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
@@ -378,93 +389,91 @@ namespace MainWindow
 		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
 
 		//start caputre in initialization
-		if (g_op_mode==0) {
+		if (g_op_mode == 0) {
 			PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
 		}
-    done:
-        SafeRelease(&pAttributes);
-        return fSuccess;
-    }
+	done:
+		SafeRelease(&pAttributes);
+		return fSuccess;
+	}
 
-    void OnPaint(HWND hwnd)
-    {
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(hwnd, &ps);
+	void OnPaint(HWND hwnd)
+	{
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hwnd, &ps);
 
-        FillRect(hdc, &ps.rcPaint, (HBRUSH) (COLOR_WINDOW+1));
+		FillRect(hdc, &ps.rcPaint, (HBRUSH)(COLOR_WINDOW + 1));
 
-        EndPaint(hwnd, &ps);
+		EndPaint(hwnd, &ps);
 		//printf("on Paint\n");
-		/*Sleep(3000);
-		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);*/
-    }
+	}
 
 
-    void OnSize(HWND /*hwnd*/, UINT state, int cx, int cy)
-    {        
-        if (state == SIZE_RESTORED || state == SIZE_MAXIMIZED)
-        {
-            // Resize the status bar.
-            SendMessageW(hStatus, WM_SIZE, 0, 0);
+	void OnSize(HWND /*hwnd*/, UINT state, int cx, int cy)
+	{
+		if (state == SIZE_RESTORED || state == SIZE_MAXIMIZED)
+		{
+			// Resize the status bar.
+			SendMessageW(hStatus, WM_SIZE, 0, 0);
 
-            // Resize the preview window.
-            RECT statusRect;
-            SendMessageW(hStatus, SB_GETRECT, 0, (LPARAM)&statusRect);
-            cy -= (statusRect.bottom - statusRect.top);
-            
-            MoveWindow(hPreview, 0, 0, cx, cy, TRUE);
-        }        
-    }
+			// Resize the preview window.
+			RECT statusRect;
+			SendMessageW(hStatus, SB_GETRECT, 0, (LPARAM)&statusRect);
+			cy -= (statusRect.bottom - statusRect.top);
 
-    void OnDestroy(HWND hwnd)
-    {
-        delete g_pEngine;
-        g_pEngine = NULL;
-        if (g_hPowerNotify)
-        {
-            UnregisterSuspendResumeNotification (g_hPowerNotify);
-            g_hPowerNotify = NULL;
-        }
-        PostQuitMessage(0);
-    }
+			MoveWindow(hPreview, 0, 0, cx, cy, TRUE);
+		}
+	}
 
-    void OnChooseDevice(HWND hwnd)
-    {
-        ChooseDeviceParam param;
+	void OnDestroy(HWND hwnd)
+	{
+		delete g_pEngine;
+		g_pEngine = NULL;
+		if (g_hPowerNotify)
+		{
+			UnregisterSuspendResumeNotification(g_hPowerNotify);
+			g_hPowerNotify = NULL;
+		}
+		PostQuitMessage(0);
+	}
 
-        IMFAttributes *pAttributes = NULL;
+	void OnChooseDevice(HWND hwnd)
+	{
+		ChooseDeviceParam param;
 
-        HRESULT hr = MFCreateAttributes(&pAttributes, 1);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		IMFAttributes *pAttributes = NULL;
 
-        // Ask for source type = video capture devices
-        hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-                MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		HRESULT hr = MFCreateAttributes(&pAttributes, 1);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
+
+		// Ask for source type = video capture devices
+		hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+			MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 		hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_CATEGORY, KSCATEGORY_SENSOR_CAMERA);
 		if (FAILED(hr))
 		{
 			goto done;
 		}
-        // Enumerate devices.
-        hr = MFEnumDeviceSources(pAttributes, &param.ppDevices, &param.count);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		// Enumerate devices.
+		hr = MFEnumDeviceSources(pAttributes, &param.ppDevices, &param.count);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
 		// Check Camera enumeration. If camera is not found, exit and write out log
 		if (param.count == 0)
 		{
 			char log_buf[50] = { 0 };
 			printf("[ERROR] IR CAMERA NOT FOUND \n");
-			
+
 			// Stream File open
 			if ((fopen_s(&file_log, "result.txt", "w+")) != 0)
 				printf("The log file was not opened\n");
@@ -477,32 +486,32 @@ namespace MainWindow
 			exit(1);
 		}
 
-        // Ask the user to select one.
+		// Ask the user to select one.
 		/* Skip selection and use default
-        INT_PTR result = DialogBoxParam(GetModuleHandle(NULL),
-            MAKEINTRESOURCE(IDD_CHOOSE_DEVICE), hwnd,
-            ChooseDeviceDlgProc, (LPARAM)&param);
+		INT_PTR result = DialogBoxParam(GetModuleHandle(NULL),
+		MAKEINTRESOURCE(IDD_CHOOSE_DEVICE), hwnd,
+		ChooseDeviceDlgProc, (LPARAM)&param);
 		*/
-		
-        //if ((result == IDOK) && (param.selection != (UINT32)-1))
-        if (1)
-		{
-            //UINT iDevice = param.selection;
-			UINT iDevice = 0; //Default use 1
-            if (iDevice >= param.count)
-            {
-                hr = E_UNEXPECTED;
-                goto done;
-            }
 
-            hr = g_pEngine->InitializeCaptureManager(hPreview, param.ppDevices[iDevice]);
-            if (FAILED(hr))
-            {
-                goto done;
-            }
-            SafeRelease(&pSelectedDevice);
-            pSelectedDevice = param.ppDevices[iDevice];
-            pSelectedDevice->AddRef();
+		//if ((result == IDOK) && (param.selection != (UINT32)-1))
+		if (1)
+		{
+			//UINT iDevice = param.selection;
+			UINT iDevice = 0; //Default use 1
+			if (iDevice >= param.count)
+			{
+				hr = E_UNEXPECTED;
+				goto done;
+			}
+
+			hr = g_pEngine->InitializeCaptureManager(hPreview, param.ppDevices[iDevice]);
+			if (FAILED(hr))
+			{
+				goto done;
+			}
+			SafeRelease(&pSelectedDevice);
+			pSelectedDevice = param.ppDevices[iDevice];
+			pSelectedDevice->AddRef();
 
 			// Get Friendly Name
 			WCHAR *szFriendlyName = NULL;
@@ -516,351 +525,369 @@ namespace MainWindow
 			}
 			wprintf(L"Device Name = %s \n", szFriendlyName);
 			CoTaskMemFree(szFriendlyName);
-        }
+		}
 
-    done:
-        SafeRelease(&pAttributes);
-        if (FAILED(hr))
-        {
-            ShowError(hwnd, IDS_ERR_SET_DEVICE, hr);
-        }
-        UpdateUI(hwnd);
-    }
+	done:
+		SafeRelease(&pAttributes);
+		if (FAILED(hr))
+		{
+			ShowError(hwnd, IDS_ERR_SET_DEVICE, hr);
+		}
+		UpdateUI(hwnd);
+	}
 
 
-    void OnStartRecord(HWND hwnd)
-    {
-        IFileSaveDialog *pFileSave = NULL;
-        IShellItem *pItem = NULL;
-        PWSTR pszFileName = NULL;
+	void OnStartRecord(HWND hwnd)
+	{
+		IFileSaveDialog *pFileSave = NULL;
+		IShellItem *pItem = NULL;
+		PWSTR pszFileName = NULL;
 
-        HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pFileSave));
-        if (FAILED(hr))
-        {
-            goto done;
-        }
-        hr = pFileSave->SetTitle(L"Select File Name");
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pFileSave));
+		if (FAILED(hr))
+		{
+			goto done;
+		}
+		hr = pFileSave->SetTitle(L"Select File Name");
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        hr = pFileSave->SetFileName(L"MyVideo.mp4");
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		hr = pFileSave->SetFileName(L"MyVideo.mp4");
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        hr = pFileSave->SetDefaultExtension(L"mp4");
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		hr = pFileSave->SetDefaultExtension(L"mp4");
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        const COMDLG_FILTERSPEC rgSpec[] =
-        { 
-            { L"MP4 (H.264/AAC)", L"*.mp4" },
-            { L"Windows Media Video", L"*.wmv" },
-            { L"All Files", L"*.*" },
-        };
-        hr = pFileSave->SetFileTypes(ARRAYSIZE(rgSpec), rgSpec);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		const COMDLG_FILTERSPEC rgSpec[] =
+		{
+			{ L"MP4 (H.264/AAC)", L"*.mp4" },
+			{ L"Windows Media Video", L"*.wmv" },
+			{ L"All Files", L"*.*" },
+		};
+		hr = pFileSave->SetFileTypes(ARRAYSIZE(rgSpec), rgSpec);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        hr = pFileSave->Show(hwnd);
-        if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
-        {
-            hr = S_OK;      // The user canceled the dialog.
-            goto done;
-        }
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		hr = pFileSave->Show(hwnd);
+		if (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+		{
+			hr = S_OK;      // The user canceled the dialog.
+			goto done;
+		}
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        hr = pFileSave->GetResult(&pItem);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		hr = pFileSave->GetResult(&pItem);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        hr = g_pEngine->StartRecord(pszFileName);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		hr = g_pEngine->StartRecord(pszFileName);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-done:
-        CoTaskMemFree(pszFileName);
-        SafeRelease(&pItem);
-        SafeRelease(&pFileSave);
+	done:
+		CoTaskMemFree(pszFileName);
+		SafeRelease(&pItem);
+		SafeRelease(&pFileSave);
 
-        if (FAILED(hr))
-        {
-            ShowError(hwnd, IDS_ERR_RECORD, hr);
-        }
-        UpdateUI(hwnd);
-    }
+		if (FAILED(hr))
+		{
+			ShowError(hwnd, IDS_ERR_RECORD, hr);
+		}
+		UpdateUI(hwnd);
+	}
 
-    void OnStopRecord(HWND hwnd)
-    {
-        HRESULT hr = g_pEngine->StopRecord();
-        if (FAILED(hr))
-        {
-            ShowError(hwnd, IDS_ERR_RECORD, hr);
-        }
-        UpdateUI(hwnd);
-    }
-    void OnStopPreview(HWND hwnd)
-    {
-        HRESULT hr = g_pEngine->StopPreview();
-        if (FAILED(hr))
-        {
-            ShowError(hwnd, IDS_ERR_RECORD, hr);
-        }
-        UpdateUI(hwnd);
-    }
-    void OnStartPreview (HWND hwnd, bool capture_photo)
-    {
-        HRESULT hr = g_pEngine->StartPreview(capture_photo);
-        if (FAILED(hr))
-        {
-            ShowError(hwnd, IDS_ERR_RECORD, hr);
-        }
-        UpdateUI(hwnd);
+	void OnStopRecord(HWND hwnd)
+	{
+		HRESULT hr = g_pEngine->StopRecord();
+		if (FAILED(hr))
+		{
+			ShowError(hwnd, IDS_ERR_RECORD, hr);
+		}
+		UpdateUI(hwnd);
+	}
+	void OnStopPreview(HWND hwnd)
+	{
+		HRESULT hr = g_pEngine->StopPreview();
+		if (FAILED(hr))
+		{
+			ShowError(hwnd, IDS_ERR_RECORD, hr);
+		}
+		UpdateUI(hwnd);
+	}
+	void OnStartPreview(HWND hwnd, bool capture_photo)
+	{
+		HRESULT hr = g_pEngine->StartPreview(capture_photo);
+		if (FAILED(hr))
+		{
+			ShowError(hwnd, IDS_ERR_RECORD, hr);
+		}
+		UpdateUI(hwnd);
 
-    }
-    void OnTakePhoto(HWND hwnd)
-    {
-        wchar_t filename[MAX_PATH];
+	}
+	void OnTakePhoto(HWND hwnd)
+	{
+		wchar_t filename[MAX_PATH];
 
-        // Get the path to the Documents folder.
-        IShellItem *psi = NULL;
-        PWSTR pszFolderPath = NULL;
+		// Get the path to the Documents folder.
+		IShellItem *psi = NULL;
+		PWSTR pszFolderPath = NULL;
 
-        HRESULT hr = SHCreateItemInKnownFolder(FOLDERID_Documents, 0, NULL, IID_PPV_ARGS(&psi));
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		HRESULT hr = SHCreateItemInKnownFolder(FOLDERID_Documents, 0, NULL, IID_PPV_ARGS(&psi));
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        hr = psi->GetDisplayName(SIGDN_FILESYSPATH, &pszFolderPath);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		hr = psi->GetDisplayName(SIGDN_FILESYSPATH, &pszFolderPath);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        // Construct a file name based on the current time.
+		// Construct a file name based on the current time.
 
-        SYSTEMTIME time;
-        GetLocalTime(&time);
+		SYSTEMTIME time;
+		GetLocalTime(&time);
 
-        hr = StringCchPrintf(filename, MAX_PATH, L"MyPhoto%04u_%02u%02u_%02u%02u%02u.jpg",
-            time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		hr = StringCchPrintf(filename, MAX_PATH, L"MyPhoto%04u_%02u%02u_%02u%02u%02u.jpg",
+			time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        LPTSTR path = PathCombine(PhotoFileName, pszFolderPath, filename);
-        if (path == NULL)
-        {
-            hr = E_FAIL;
-            goto done;
-        }
+		LPTSTR path = PathCombine(PhotoFileName, pszFolderPath, filename);
+		if (path == NULL)
+		{
+			hr = E_FAIL;
+			goto done;
+		}
 		wprintf(L"%s\n", path);
 
-        hr = g_pEngine->TakePhoto(filename);
-        if (FAILED(hr))
-        {
-            goto done;
-        }
+		hr = g_pEngine->TakePhoto(filename);
+		if (FAILED(hr))
+		{
+			goto done;
+		}
 
-        _SetStatusText(path);
+		_SetStatusText(path);
 
-done:
-        SafeRelease(&psi);
-        CoTaskMemFree(pszFolderPath);
+	done:
+		SafeRelease(&psi);
+		CoTaskMemFree(pszFolderPath);
 
-        if (FAILED(hr))
-        {
-            ShowError(hwnd, IDS_ERR_PHOTO, hr);
-        }
-        UpdateUI(hwnd);
-    }
-    
-    void OnCommand(HWND hwnd, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)
-    {
-        switch (id)
-        {
-        case ID_CAPTURE_CHOOSEDEVICE:
-            OnChooseDevice(hwnd);
-            break;
+		if (FAILED(hr))
+		{
+			ShowError(hwnd, IDS_ERR_PHOTO, hr);
+		}
+		UpdateUI(hwnd);
+	}
 
-        case ID_CAPTURE_RECORD:
-            if (g_pEngine->IsRecording())
-            {
-                OnStopRecord(hwnd);
-            }
-            else
-            {
-                OnStartRecord(hwnd);
-            }
-            break;
+	void OnCommand(HWND hwnd, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)
+	{
+		switch (id)
+		{
+		case ID_CAPTURE_CHOOSEDEVICE:
+			OnChooseDevice(hwnd);
+			break;
 
-        case ID_CAPTURE_TAKEPHOTO:
-			// Can't use traditional function to do capturing...Can't get data
-            OnTakePhoto(hwnd);
-            break;
-        case ID_CAPTURE_PREVIEW:
-			printf("capture_photo = %d \n", capture_photo);
-			Sleep(100);
-            if (g_pEngine->IsPreviewing())
-            {
-                OnStopPreview(hwnd);
-            }
-            else
-            {
-                OnStartPreview(hwnd, capture_photo);
-            }
-			capture_photo = 0;
-            break;
-		case ID_CAPTURE_FRAME:
+		case ID_CAPTURE_RECORD:
+			if (g_pEngine->IsRecording())
 			{
-				capture_photo = 1;
-
-				if (g_pEngine->IsPreviewing())
-				{
-					OnStopPreview(hwnd);
-				}
-				// Start photo capture
-				// Post message to enum device
-				PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
-				// Note: Need to wait for device preparation
-				PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
+				OnStopRecord(hwnd);
 			}
-        }
-    }
+			else
+			{
+				OnStartRecord(hwnd);
+			}
+			break;
+
+		case ID_CAPTURE_TAKEPHOTO:
+			// Can't use traditional function to do capturing...Can't get data
+			OnTakePhoto(hwnd);
+			break;
+		case ID_CAPTURE_PREVIEW:
+			printf("capture_photo=%d, count to capture %d\n", capture_photo, g_countToCapture);
+			Sleep(100);
+			if (g_pEngine->IsPreviewing())
+			{
+				OnStopPreview(hwnd);
+			}
+			else
+			{
+				OnStartPreview(hwnd, capture_photo);
+			}
+			capture_photo = 0;
+			break;
+		case ID_CAPTURE_FRAME:
+		{
+			capture_photo = 1;
+
+			if (g_pEngine->IsPreviewing())
+			{
+				OnStopPreview(hwnd);
+			}
+			// Start photo capture
+			// Post message to enum device
+			PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
+			// Note: Need to wait for device preparation
+			PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
+			break;
+		}
+		case ID_JUMP_TO_FAIL:
+		{
+			printf("jump to fail\n");
+
+			char log_buf[50] = { 0 };
+			if ((fopen_s(&file_log, "result.txt", "w+")) != 0)
+				printf("The log file was not opened\n");
+
+			// Write to log file
+			sprintf_s(log_buf, "%s \n%s \n", "FAIL", "[ERROR] IR CAMERA NOT FOUND");
+			fwrite(log_buf, 1, sizeof(log_buf), file_log);
+			fclose(file_log);
+
+			exit(1);
+
+			break;
+		}
+		}
+	}
 
 
-    LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-    {
-        switch (uMsg)
-        {
-        HANDLE_MSG(hwnd, WM_CREATE,  OnCreate);
-        HANDLE_MSG(hwnd, WM_PAINT,   OnPaint);
-        HANDLE_MSG(hwnd, WM_SIZE,    OnSize);
-        HANDLE_MSG(hwnd, WM_DESTROY, OnDestroy);
-        HANDLE_MSG(hwnd, WM_COMMAND, OnCommand);
+	LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+	{
+		switch (uMsg)
+		{
+			HANDLE_MSG(hwnd, WM_CREATE, OnCreate);
+			HANDLE_MSG(hwnd, WM_PAINT, OnPaint);
+			HANDLE_MSG(hwnd, WM_SIZE, OnSize);
+			HANDLE_MSG(hwnd, WM_DESTROY, OnDestroy);
+			HANDLE_MSG(hwnd, WM_COMMAND, OnCommand);
 
-        case WM_ERASEBKGND:
-            return 1;
+		case WM_ERASEBKGND:
+			return 1;
 
-        case WM_APP_CAPTURE_EVENT:
-            {
-                if (g_pEngine)
-                {
-                    HRESULT hr = g_pEngine->OnCaptureEvent(wParam, lParam);
-                    if (FAILED(hr))
-                    {
-                        ShowError(hwnd, g_pEngine->ErrorID(), hr);
-                        InvalidateRect(hwnd, NULL, FALSE);
-                    }
-                }
+		case WM_APP_CAPTURE_EVENT:
+		{
+			if (g_pEngine)
+			{
+				HRESULT hr = g_pEngine->OnCaptureEvent(wParam, lParam);
+				if (FAILED(hr))
+				{
+					ShowError(hwnd, g_pEngine->ErrorID(), hr);
+					InvalidateRect(hwnd, NULL, FALSE);
+				}
+			}
 
-                UpdateUI(hwnd);
-            }
-            return 0;
-        case WM_POWERBROADCAST:
-            {
-                switch (wParam)
-                {
-                case PBT_APMSUSPEND:
-                    DbgPrint(L"++WM_POWERBROADCAST++ Stopping both preview & record stream.\n");
-                    g_fSleepState = true;
-                    g_pEngine->SleepState(g_fSleepState);
-                    g_pEngine->StopRecord();
-                    g_pEngine->StopPreview();
-                    g_pEngine->DestroyCaptureEngine();
-                    DbgPrint(L"++WM_POWERBROADCAST++ streams stopped, capture engine destroyed.\n");
-                    break;
-                case PBT_APMRESUMEAUTOMATIC:
-                    DbgPrint(L"++WM_POWERBROADCAST++ Reinitializing capture engine.\n");
-                    g_fSleepState = false;
-                    g_pEngine->SleepState(g_fSleepState);
-                    g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
-                    break;
-                case PBT_POWERSETTINGCHANGE:
-                    {
-                        // We should only be in here for GUID_MONITOR_POWER_ON.
-                        POWERBROADCAST_SETTING* pSettings = (POWERBROADCAST_SETTING*)lParam;
+			UpdateUI(hwnd);
+		}
+		return 0;
+		case WM_POWERBROADCAST:
+		{
+			switch (wParam)
+			{
+			case PBT_APMSUSPEND:
+				DbgPrint(L"++WM_POWERBROADCAST++ Stopping both preview & record stream.\n");
+				g_fSleepState = true;
+				g_pEngine->SleepState(g_fSleepState);
+				g_pEngine->StopRecord();
+				g_pEngine->StopPreview();
+				g_pEngine->DestroyCaptureEngine();
+				DbgPrint(L"++WM_POWERBROADCAST++ streams stopped, capture engine destroyed.\n");
+				break;
+			case PBT_APMRESUMEAUTOMATIC:
+				DbgPrint(L"++WM_POWERBROADCAST++ Reinitializing capture engine.\n");
+				g_fSleepState = false;
+				g_pEngine->SleepState(g_fSleepState);
+				g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
+				break;
+			case PBT_POWERSETTINGCHANGE:
+			{
+				// We should only be in here for GUID_MONITOR_POWER_ON.
+				POWERBROADCAST_SETTING* pSettings = (POWERBROADCAST_SETTING*)lParam;
 
-                        // If this is a SOC system (AoAc is true), we want to check our current
-                        // sleep state and based on whether the monitor is being turned on/off,
-                        // we can turn off our media streams and/or re-initialize the capture
-                        // engine.
-                        if (pSettings != NULL && g_pwrCaps.AoAc && pSettings->PowerSetting == GUID_MONITOR_POWER_ON)
-                        {
-                            DWORD   dwData = *((DWORD*)pSettings->Data);
-                            if (dwData == 0 && !g_fSleepState)
-                            {
-                                // This is a AOAC machine, and we're about to turn off our monitor, let's stop recording/preview.
-                                DbgPrint(L"++WM_POWERBROADCAST++ Stopping both preview & record stream.\n");
-                                g_fSleepState = true;
-                                g_pEngine->SleepState(g_fSleepState);
-                                g_pEngine->StopRecord();
-                                g_pEngine->StopPreview();
-                                g_pEngine->DestroyCaptureEngine();
-                                DbgPrint(L"++WM_POWERBROADCAST++ streams stopped, capture engine destroyed.\n");
-                            }
-                            else if (dwData != 0 && g_fSleepState)
-                            {
-                                DbgPrint(L"++WM_POWERBROADCAST++ Reinitializing capture engine.\n");
-                                g_fSleepState = false;
-                                g_pEngine->SleepState(g_fSleepState);
-                                g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
-                            }
-                        }
-                    }
-                    break;
-                case PBT_APMRESUMESUSPEND:
-                default:
-                    // Don't care about this one, we always get the resume automatic so just
-                    // latch onto that one.
-                    DbgPrint(L"++WM_POWERBROADCAST++ (wParam=%u,lParam=%u)\n", wParam, lParam);
-                    break;
-                }
-            }
-            return 1;
-        }
-        return DefWindowProc(hwnd, uMsg, wParam, lParam);
-    }
+				// If this is a SOC system (AoAc is true), we want to check our current
+				// sleep state and based on whether the monitor is being turned on/off,
+				// we can turn off our media streams and/or re-initialize the capture
+				// engine.
+				if (pSettings != NULL && g_pwrCaps.AoAc && pSettings->PowerSetting == GUID_MONITOR_POWER_ON)
+				{
+					DWORD   dwData = *((DWORD*)pSettings->Data);
+					if (dwData == 0 && !g_fSleepState)
+					{
+						// This is a AOAC machine, and we're about to turn off our monitor, let's stop recording/preview.
+						DbgPrint(L"++WM_POWERBROADCAST++ Stopping both preview & record stream.\n");
+						g_fSleepState = true;
+						g_pEngine->SleepState(g_fSleepState);
+						g_pEngine->StopRecord();
+						g_pEngine->StopPreview();
+						g_pEngine->DestroyCaptureEngine();
+						DbgPrint(L"++WM_POWERBROADCAST++ streams stopped, capture engine destroyed.\n");
+					}
+					else if (dwData != 0 && g_fSleepState)
+					{
+						DbgPrint(L"++WM_POWERBROADCAST++ Reinitializing capture engine.\n");
+						g_fSleepState = false;
+						g_pEngine->SleepState(g_fSleepState);
+						g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
+					}
+				}
+			}
+			break;
+			case PBT_APMRESUMESUSPEND:
+			default:
+				// Don't care about this one, we always get the resume automatic so just
+				// latch onto that one.
+				DbgPrint(L"++WM_POWERBROADCAST++ (wParam=%u,lParam=%u)\n", wParam, lParam);
+				break;
+			}
+		}
+		return 1;
+		}
+		return DefWindowProc(hwnd, uMsg, wParam, lParam);
+	}
 };
 
 HWND CreateMainWindow(HINSTANCE hInstance)
 {
-    // Register the window class.
-    const wchar_t CLASS_NAME[]  = L"Capture Engine Window Class";
-    
-    WNDCLASS wc = { };
+	// Register the window class.
+	const wchar_t CLASS_NAME[] = L"Capture Engine Window Class";
 
-    wc.lpfnWndProc   = MainWindow::WindowProc;
-    wc.hInstance     = hInstance;
-    wc.lpszClassName = CLASS_NAME;
-    wc.lpszMenuName  = MAKEINTRESOURCE(IDR_MENU1);
+	WNDCLASS wc = {};
 
-    RegisterClass(&wc);
+	wc.lpfnWndProc = MainWindow::WindowProc;
+	wc.hInstance = hInstance;
+	wc.lpszClassName = CLASS_NAME;
+	wc.lpszMenuName = MAKEINTRESOURCE(IDR_MENU1);
 
-    // Create the window.
-    return CreateWindowEx(0, CLASS_NAME, L"Capture Application",
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-        NULL, NULL, hInstance, NULL);
+	RegisterClass(&wc);
+
+	// Create the window.
+	return CreateWindowEx(0, CLASS_NAME, L"Capture Application",
+		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+		NULL, NULL, hInstance, NULL);
 };
