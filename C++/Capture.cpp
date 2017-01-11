@@ -22,6 +22,8 @@ extern int g_op_mode;
 extern int g_countToCapture;
 extern WCHAR *g_toolVersion;
 extern FILE *file_log;
+extern CaptureManager *g_pEngine;
+extern HWND initWindow;
 
 STDMETHODIMP CaptureManager::CaptureEngineCB::QueryInterface(REFIID riid, void** ppv)
 {
@@ -63,6 +65,7 @@ STDMETHODIMP CaptureManager::CaptureEngineCB::OnEvent(_In_ IMFMediaEvent* pEvent
 		HRESULT hr = pEvent->GetStatus(&hrStatus);
 		if (FAILED(hr))
 		{
+			printf("pEvent->GetStatus error\n");
 			hrStatus = hr;
 		}
 
@@ -168,6 +171,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 
 	if (FAILED(hr))
 	{
+		printf("GetTotalLength error\n");
 		goto done;
 	}
 
@@ -175,6 +179,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	hr = pSample->ConvertToContiguousBuffer(&pSampleBuffer);
 	if (FAILED(hr))
 	{
+		printf("ConvertToContiguousBuffer error\n");
 		goto done;
 	}
 
@@ -193,7 +198,8 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 
 			if ((frame_index == 0 && (evalueCount%2 == BrightCount))      ||//light one
 				 frame_index == 1 ) {//next one
-
+				 
+			//if(1) {
 				printf("frame index %d, this evalue Count %d, BrightCount %d, avg %d\n", frame_index, evalueCount, BrightCount, average_sum[frame_index]);
 
 				//inverse
@@ -253,7 +259,17 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					sprintf_s(log_buf, "%s \n[diff, frame 1, frame 2] = [%d, %d, %d]\n%s\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1], outputVersion);
 					fwrite(log_buf, 1, sizeof(log_buf), file_log);
 					fclose(file_log);
+
+					//release parameters
+					/*pSampleBuffer->Unlock();
+					pSampleBuffer->Release();
+					g_pEngine->StopPreview();*/
+
+					//PostMessage(initWindow, WM_DESTROY, NULL, 0L);
+
+					//exit
 					exit(0);
+
 					//system("PAUSE");
 				}
 			}
@@ -451,16 +467,19 @@ CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 	hr = CreateD3DManager();
 	if (FAILED(hr))
 	{
+		printf("CreateD3DManager error\n");
 		goto Exit;
 	}
 	hr = MFCreateAttributes(&pAttributes, 1);
 	if (FAILED(hr))
 	{
+		printf("MFCreateAttributes error\n");
 		goto Exit;
 	}
 	hr = pAttributes->SetUnknown(MF_CAPTURE_ENGINE_D3D_MANAGER, g_pDXGIMan);
 	if (FAILED(hr))
 	{
+		printf("pAttributes->SetUnknown error\n");
 		goto Exit;
 	}
 
@@ -469,6 +488,7 @@ CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 		CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pFactory));
 	if (FAILED(hr))
 	{
+		printf("CoCreateInstance error\n");
 		goto Exit;
 	}
 
@@ -476,11 +496,13 @@ CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 	hr = pFactory->CreateInstance(CLSID_MFCaptureEngine, IID_PPV_ARGS(&m_pEngine));
 	if (FAILED(hr))
 	{
+		printf("pFactory->CreateInstance error\n");
 		goto Exit;
 	}
 	hr = m_pEngine->Initialize(m_pCallback, pAttributes, NULL, pUnk);
 	if (FAILED(hr))
 	{
+		printf("m_pEngine->Initialize error\n");
 		goto Exit;
 	}
 
@@ -510,6 +532,7 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 	HRESULT hr = pEvent->GetStatus(&hrStatus);
 	if (FAILED(hr))
 	{
+		printf("pEvent->GetStatus error\n");
 		hrStatus = hr;
 	}
 
@@ -563,6 +586,7 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 		}
 		else if (FAILED(hrStatus))
 		{
+			printf("pEvent->GetStatus error2\n");
 			SetErrorID(hrStatus, IDS_ERR_CAPTURE);
 		}
 	}
@@ -628,12 +652,14 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_PREVIEW, &pSink);
 		if (FAILED(hr))
 		{
+			printf("m_pEngine->GetSink error\n");
 			goto done;
 		}
 
 		hr = pSink->QueryInterface(IID_PPV_ARGS(&m_pPreview));
 		if (FAILED(hr))
 		{
+			printf("pSink->QueryInterface error\n");
 			goto done;
 		}
 
@@ -646,6 +672,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		hr = m_pEngine->GetSource(&pSource);
 		if (FAILED(hr))
 		{
+			printf("m_pEngine->GetSource error\n");
 			goto done;
 		}
 
@@ -653,6 +680,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, &pMediaType);
 		if (FAILED(hr))
 		{
+			printf("pSource->GetCurrentDeviceMediaType error\n");
 			goto done;
 		}
 
@@ -662,6 +690,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 
 		if (FAILED(hr))
 		{
+			printf("CloneVideoMediaType error\n");
 			goto done;
 		}
 
@@ -675,6 +704,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		hr = MFGetAttributeRatio(pMediaType2, MF_MT_FRAME_RATE, &uiNumerator, &uiDenominator);
 		if (FAILED(hr))
 		{
+			printf("MFGetAttributeRatio error \n");
 			goto done;
 		}
 		uiFps = uiNumerator / uiDenominator;
@@ -684,6 +714,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		hr = MFGetAttributeSize(pMediaType2, MF_MT_FRAME_SIZE, &uiWidth, &uiHeight);
 		if (FAILED(hr))
 		{
+			printf("MFGetAttributeSize error\n");
 			goto done;
 		}
 		printf("[Format] width = %d, Height = %d\n", uiWidth, uiHeight);
@@ -693,6 +724,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		hr = pMediaType2->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
 		if (FAILED(hr))
 		{
+			printf("pMediaType2->SetUINT32 error\n");
 			goto done;
 		}
 
@@ -700,13 +732,24 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		hr = m_pPreview->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, pMediaType2, NULL, &dwSinkStreamIndex);
 		if (FAILED(hr))
 		{
+			printf("m_pPreview->AddStream error\n");
 			goto done;
 		}
 
 		// Set callback of sink
 		hr = m_pPreview->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback);
+		if (FAILED(hr))
+		{
+			printf("m_pPreview->SetSampleCallback error\n");
+			goto done;
+		}
 
 		hr = m_pEngine->StartPreview();
+		if (FAILED(hr))
+		{
+			printf("m_pEngine->StartPreview error\n");
+			goto done;
+		}
 	}
 
 	g_Capture_photo = capture_photo;
@@ -758,6 +801,7 @@ HRESULT CaptureManager::StopPreview()
 	hr = m_pEngine->StopPreview();
 	if (FAILED(hr))
 	{
+		printf("m_pEngine->StopPreview error\n");
 		goto done;
 	}
 	WaitForResult();
@@ -804,12 +848,14 @@ HRESULT GetEncodingBitrate(IMFMediaType *pMediaType, UINT32 *uiEncodingBitrate)
 	HRESULT hr = GetFrameSize(pMediaType, &uiWidth, &uiHeight);
 	if (FAILED(hr))
 	{
+		printf("GetFrameSize error\n");
 		goto done;
 	}
 
 	hr = GetFrameRate(pMediaType, &uiFrameRateNum, &uiFrameRateDenom);
 	if (FAILED(hr))
 	{
+		printf("GetFrameRate error\n");
 		goto done;
 	}
 
@@ -832,12 +878,14 @@ HRESULT ConfigureVideoEncoding(IMFCaptureSource *pSource, IMFCaptureRecordSink *
 	HRESULT hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_RECORD, &pMediaType);
 	if (FAILED(hr))
 	{
+		printf("pSource->GetCurrentDeviceMediaType error\n");
 		goto done;
 	}
 
 	hr = CloneVideoMediaType(pMediaType, guidEncodingType, &pMediaType2);
 	if (FAILED(hr))
 	{
+		printf("CloneVideoMediaType error\n");
 		goto done;
 	}
 
@@ -845,6 +893,7 @@ HRESULT ConfigureVideoEncoding(IMFCaptureSource *pSource, IMFCaptureRecordSink *
 	hr = pMediaType->GetGUID(MF_MT_SUBTYPE, &guidSubType);
 	if (FAILED(hr))
 	{
+		printf("pMediaType->GetGUID error\n");
 		goto done;
 	}
 
@@ -859,6 +908,7 @@ HRESULT ConfigureVideoEncoding(IMFCaptureSource *pSource, IMFCaptureRecordSink *
 		hr = GetEncodingBitrate(pMediaType2, &uiEncodingBitrate);
 		if (FAILED(hr))
 		{
+			printf("GetEncodingBitrate error\n");
 			goto done;
 		}
 
@@ -867,6 +917,7 @@ HRESULT ConfigureVideoEncoding(IMFCaptureSource *pSource, IMFCaptureRecordSink *
 
 	if (FAILED(hr))
 	{
+		printf("pMediaType2->SetGUID or pMediaType2->SetUINT32 error\n");
 		goto done;
 	}
 
@@ -891,6 +942,7 @@ HRESULT ConfigureAudioEncoding(IMFCaptureSource *pSource, IMFCaptureRecordSink *
 	HRESULT hr = MFCreateAttributes(&pAttributes, 1);
 	if (FAILED(hr))
 	{
+		printf("MFCreateAttributes error\n");
 		goto done;
 	}
 
@@ -898,6 +950,7 @@ HRESULT ConfigureAudioEncoding(IMFCaptureSource *pSource, IMFCaptureRecordSink *
 	hr = pAttributes->SetUINT32(MF_LOW_LATENCY, TRUE);
 	if (FAILED(hr))
 	{
+		printf("pAttributes->SetUINT32 error\n");
 		goto done;
 	}
 
@@ -907,6 +960,7 @@ HRESULT ConfigureAudioEncoding(IMFCaptureSource *pSource, IMFCaptureRecordSink *
 		pAttributes, &pAvailableTypes);
 	if (FAILED(hr))
 	{
+		printf("MFTranscodeGetAudioOutputAvailableTypes error\n");
 		goto done;
 	}
 
@@ -914,6 +968,7 @@ HRESULT ConfigureAudioEncoding(IMFCaptureSource *pSource, IMFCaptureRecordSink *
 	hr = GetCollectionObject(pAvailableTypes, 0, &pMediaType);
 	if (FAILED(hr))
 	{
+		printf("GetCollectionObject error\n");
 		goto done;
 	}
 
@@ -976,18 +1031,21 @@ HRESULT CaptureManager::StartRecord(PCWSTR pszDestinationFile)
 	HRESULT hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_RECORD, &pSink);
 	if (FAILED(hr))
 	{
+		printf("m_pEngine->GetSink error\n");
 		goto done;
 	}
 
 	hr = pSink->QueryInterface(IID_PPV_ARGS(&pRecord));
 	if (FAILED(hr))
 	{
+		printf("pSink->QueryInterface error\n");
 		goto done;
 	}
 
 	hr = m_pEngine->GetSource(&pSource);
 	if (FAILED(hr))
 	{
+		printf("m_pEngine->GetSource error\n");
 		goto done;
 	}
 
@@ -995,12 +1053,14 @@ HRESULT CaptureManager::StartRecord(PCWSTR pszDestinationFile)
 	hr = pRecord->RemoveAllStreams();
 	if (FAILED(hr))
 	{
+		printf("pRecord->RemoveAllStreams error\n");
 		goto done;
 	}
 
 	hr = pRecord->SetOutputFileName(pszDestinationFile);
 	if (FAILED(hr))
 	{
+		printf("pRecord->SetOutputFileName error\n");
 		goto done;
 	}
 
@@ -1010,6 +1070,8 @@ HRESULT CaptureManager::StartRecord(PCWSTR pszDestinationFile)
 		hr = ConfigureVideoEncoding(pSource, pRecord, guidVideoEncoding);
 		if (FAILED(hr))
 		{
+			printf("ConfigureVideoEncoding error\n");
+
 			goto done;
 		}
 	}
@@ -1019,6 +1081,8 @@ HRESULT CaptureManager::StartRecord(PCWSTR pszDestinationFile)
 		hr = ConfigureAudioEncoding(pSource, pRecord, guidAudioEncoding);
 		if (FAILED(hr))
 		{
+			printf("ConfigureAudioEncoding error\n");
+
 			goto done;
 		}
 	}
@@ -1026,6 +1090,8 @@ HRESULT CaptureManager::StartRecord(PCWSTR pszDestinationFile)
 	hr = m_pEngine->StartRecord();
 	if (FAILED(hr))
 	{
+		printf("m_pEngine->StartRecord error\n");
+
 		goto done;
 	}
 
@@ -1066,24 +1132,32 @@ HRESULT CaptureManager::TakePhoto(PCWSTR pszFileName)
 	HRESULT hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_PHOTO, &pSink);
 	if (FAILED(hr))
 	{
+		printf("m_pEngine->GetSink error\n");
+
 		goto done;
 	}
 
 	hr = pSink->QueryInterface(IID_PPV_ARGS(&pPhoto));
 	if (FAILED(hr))
 	{
+		printf("pSink->QueryInterface error\n");
+
 		goto done;
 	}
 
 	hr = m_pEngine->GetSource(&pSource);
 	if (FAILED(hr))
 	{
+		printf("m_pEngine->GetSource error\n");
+
 		goto done;
 	}
 
 	hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_PHOTO, &pMediaType);
 	if (FAILED(hr))
 	{
+		printf("pSource->GetCurrentDeviceMediaType error\n");
+
 		goto done;
 	}
 
@@ -1091,12 +1165,16 @@ HRESULT CaptureManager::TakePhoto(PCWSTR pszFileName)
 	hr = CreatePhotoMediaType(pMediaType, &pMediaType2);
 	if (FAILED(hr))
 	{
+		printf("CreatePhotoMediaType error\n");
+
 		goto done;
 	}
 
 	hr = pPhoto->RemoveAllStreams();
 	if (FAILED(hr))
 	{
+		printf("pPhoto->RemoveAllStreams error\n");
+
 		goto done;
 	}
 
@@ -1109,18 +1187,24 @@ HRESULT CaptureManager::TakePhoto(PCWSTR pszFileName)
 
 	if (FAILED(hr))
 	{
+		printf("pPhoto->AddStream error\n");
+
 		goto done;
 	}
 
 	hr = pPhoto->SetOutputFileName(pszFileName);
 	if (FAILED(hr))
 	{
+		printf("pPhoto->SetOutputFileName error\n");
+
 		goto done;
 	}
 
 	hr = m_pEngine->TakePhoto();
 	if (FAILED(hr))
 	{
+		printf("m_pEngine->TakePhoto error\n");
+
 		goto done;
 	}
 

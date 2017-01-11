@@ -20,8 +20,9 @@
 int g_threshold;
 int g_op_mode;
 int g_countToCapture;
-WCHAR *g_toolVersion = L"version: 20170106";
+WCHAR *g_toolVersion = L"version: 20170111-Test";
 FILE *file_log;
+HWND initWindow;
 
 // Main function for the console
 int main(int argc, char **argv) {
@@ -83,6 +84,8 @@ INT WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance
 	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 	if (FAILED(hr))
 	{
+		printf("CoInitializeEx error\n");
+
 		goto done;
 	}
 	bCoInit = true;
@@ -90,6 +93,8 @@ INT WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance
 	hr = MFStartup(MF_VERSION);
 	if (FAILED(hr))
 	{
+		printf("MFStartup error\n");
+
 		goto done;
 	}
 
@@ -116,6 +121,8 @@ INT WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance
 done:
 	if (FAILED(hr))
 	{
+		printf("MFStartup error2\n");
+
 		ShowError(NULL, L"Failed to start application", hr);
 	}
 	if (bMFStartup)
@@ -185,6 +192,8 @@ HRESULT OnInitDialog(HWND hwnd, ChooseDeviceParam *pParam)
 			&szFriendlyName, &cchName);
 		if (FAILED(hr))
 		{
+			printf("pParam->ppDevices[i]->GetAllocatedString error\n");
+
 			break;
 		}
 
@@ -340,6 +349,8 @@ namespace MainWindow
 		IMFAttributes*      pAttributes = NULL;
 		HRESULT             hr = S_OK;
 
+		initWindow = hwnd;
+
 		WCHAR titleName[100] = L"[IR Test Tool] ";
 		wcscat(titleName, g_toolVersion);
 
@@ -361,12 +372,16 @@ namespace MainWindow
 
 		if (FAILED(CaptureManager::CreateInstance(hwnd, &g_pEngine)))
 		{
+			printf("CaptureManager::CreateInstance error\n");
+
 			goto done;
 		}
 
 		hr = g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
 		if (FAILED(hr))
 		{
+			printf("g_pEngine->InitializeCaptureManager error\n");
+
 			ShowError(hwnd, IDS_ERR_SET_DEVICE, hr);
 			goto done;
 		}
@@ -382,6 +397,11 @@ namespace MainWindow
 		UpdateUI(hwnd);
 		fSuccess = TRUE;
 
+
+		if (g_op_mode == 0) {
+			capture_photo = 1;
+		}
+
 		// Post message to enum device
 		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
 		// Note: Need to wait for device preparation
@@ -389,9 +409,10 @@ namespace MainWindow
 		PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
 
 		//start caputre in initialization
-		if (g_op_mode == 0) {
+		/*if (g_op_mode == 0) {
+			Sleep(5000);
 			PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
-		}
+		}*/
 	done:
 		SafeRelease(&pAttributes);
 		return fSuccess;
@@ -446,6 +467,7 @@ namespace MainWindow
 		HRESULT hr = MFCreateAttributes(&pAttributes, 1);
 		if (FAILED(hr))
 		{
+			printf("MFCreateAttributes error\n");
 			goto done;
 		}
 
@@ -454,32 +476,40 @@ namespace MainWindow
 			MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
 		if (FAILED(hr))
 		{
+			printf("pAttributes->SetGUID error\n");
+
 			goto done;
 		}
 		hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_CATEGORY, KSCATEGORY_SENSOR_CAMERA);
 		if (FAILED(hr))
 		{
+			printf("pAttributes->SetGUID2 error\n");
+
 			goto done;
 		}
 		// Enumerate devices.
 		hr = MFEnumDeviceSources(pAttributes, &param.ppDevices, &param.count);
 		if (FAILED(hr))
 		{
+			printf("MFEnumDeviceSources error\n");
+
 			goto done;
 		}
 
 		// Check Camera enumeration. If camera is not found, exit and write out log
 		if (param.count == 0)
 		{
-			char log_buf[50] = { 0 };
+			char log_buf[100] = { 0 };
 			printf("[ERROR] IR CAMERA NOT FOUND \n");
 
 			// Stream File open
 			if ((fopen_s(&file_log, "result.txt", "w+")) != 0)
 				printf("The log file was not opened\n");
 
+			_bstr_t b(g_toolVersion);
+			char *outputVersion = b;
 			// Write to log file
-			sprintf_s(log_buf, "%s \n%s \n", "FAIL", "[ERROR] IR CAMERA NOT FOUND");
+			sprintf_s(log_buf, "%s \n%s \n%s \n", "FAIL", "[ERROR] IR CAMERA NOT FOUND", outputVersion);
 			fwrite(log_buf, 1, sizeof(log_buf), file_log);
 			fclose(file_log);
 
@@ -507,6 +537,8 @@ namespace MainWindow
 			hr = g_pEngine->InitializeCaptureManager(hPreview, param.ppDevices[iDevice]);
 			if (FAILED(hr))
 			{
+				printf("g_pEngine->InitializeCaptureManager error\n");
+
 				goto done;
 			}
 			SafeRelease(&pSelectedDevice);
@@ -521,6 +553,8 @@ namespace MainWindow
 				&szFriendlyName, &cchName);
 			if (FAILED(hr))
 			{
+				printf("param.ppDevices[iDevice]->GetAllocatedString error\n");
+
 				goto done;
 			}
 			wprintf(L"Device Name = %s \n", szFriendlyName);
@@ -531,6 +565,8 @@ namespace MainWindow
 		SafeRelease(&pAttributes);
 		if (FAILED(hr))
 		{
+			printf("OnChooseDevice end error\n");
+
 			ShowError(hwnd, IDS_ERR_SET_DEVICE, hr);
 		}
 		UpdateUI(hwnd);
@@ -546,23 +582,31 @@ namespace MainWindow
 		HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pFileSave));
 		if (FAILED(hr))
 		{
+			printf("CoCreateInstance error\n");
+
 			goto done;
 		}
 		hr = pFileSave->SetTitle(L"Select File Name");
 		if (FAILED(hr))
 		{
+			printf("pFileSave->SetTitle error\n");
+
 			goto done;
 		}
 
 		hr = pFileSave->SetFileName(L"MyVideo.mp4");
 		if (FAILED(hr))
 		{
+			printf("pFileSave->SetFileName error\n");
+
 			goto done;
 		}
 
 		hr = pFileSave->SetDefaultExtension(L"mp4");
 		if (FAILED(hr))
 		{
+			printf("pFileSave->SetDefaultExtension error\n");
+
 			goto done;
 		}
 
@@ -575,6 +619,8 @@ namespace MainWindow
 		hr = pFileSave->SetFileTypes(ARRAYSIZE(rgSpec), rgSpec);
 		if (FAILED(hr))
 		{
+			printf("pFileSave->SetFileTypes error\n");
+
 			goto done;
 		}
 
@@ -586,24 +632,32 @@ namespace MainWindow
 		}
 		if (FAILED(hr))
 		{
+			printf("pFileSave->Show error\n");
+
 			goto done;
 		}
 
 		hr = pFileSave->GetResult(&pItem);
 		if (FAILED(hr))
 		{
+			printf("pFileSave->GetResult error\n");
+
 			goto done;
 		}
 
 		hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFileName);
 		if (FAILED(hr))
 		{
+			printf("pItem->GetDisplayName error\n");
+
 			goto done;
 		}
 
 		hr = g_pEngine->StartRecord(pszFileName);
 		if (FAILED(hr))
 		{
+			printf("g_pEngine->StartRecord error\n");
+
 			goto done;
 		}
 
@@ -614,6 +668,8 @@ namespace MainWindow
 
 		if (FAILED(hr))
 		{
+			printf("OnStartRecord done error\n");
+
 			ShowError(hwnd, IDS_ERR_RECORD, hr);
 		}
 		UpdateUI(hwnd);
@@ -624,6 +680,8 @@ namespace MainWindow
 		HRESULT hr = g_pEngine->StopRecord();
 		if (FAILED(hr))
 		{
+			printf("g_pEngine->StopRecord error\n");
+
 			ShowError(hwnd, IDS_ERR_RECORD, hr);
 		}
 		UpdateUI(hwnd);
@@ -633,6 +691,8 @@ namespace MainWindow
 		HRESULT hr = g_pEngine->StopPreview();
 		if (FAILED(hr))
 		{
+			printf("g_pEngine->StopPreview error\n");
+
 			ShowError(hwnd, IDS_ERR_RECORD, hr);
 		}
 		UpdateUI(hwnd);
@@ -642,6 +702,8 @@ namespace MainWindow
 		HRESULT hr = g_pEngine->StartPreview(capture_photo);
 		if (FAILED(hr))
 		{
+			printf("g_pEngine->StartPreview error\n");
+
 			ShowError(hwnd, IDS_ERR_RECORD, hr);
 		}
 		UpdateUI(hwnd);
@@ -658,12 +720,16 @@ namespace MainWindow
 		HRESULT hr = SHCreateItemInKnownFolder(FOLDERID_Documents, 0, NULL, IID_PPV_ARGS(&psi));
 		if (FAILED(hr))
 		{
+			printf("SHCreateItemInKnownFolder error\n");
+
 			goto done;
 		}
 
 		hr = psi->GetDisplayName(SIGDN_FILESYSPATH, &pszFolderPath);
 		if (FAILED(hr))
 		{
+			printf("psi->GetDisplayName error\n");
+
 			goto done;
 		}
 
@@ -676,6 +742,8 @@ namespace MainWindow
 			time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
 		if (FAILED(hr))
 		{
+			printf("StringCchPrintf error\n");
+
 			goto done;
 		}
 
@@ -690,6 +758,8 @@ namespace MainWindow
 		hr = g_pEngine->TakePhoto(filename);
 		if (FAILED(hr))
 		{
+			printf("g_pEngine->TakePhoto error\n");
+
 			goto done;
 		}
 
@@ -701,6 +771,8 @@ namespace MainWindow
 
 		if (FAILED(hr))
 		{
+			printf("OnTakePhoto done error\n");
+
 			ShowError(hwnd, IDS_ERR_PHOTO, hr);
 		}
 		UpdateUI(hwnd);
@@ -761,12 +833,14 @@ namespace MainWindow
 		{
 			printf("jump to fail\n");
 
-			char log_buf[50] = { 0 };
+			char log_buf[100] = { 0 };
 			if ((fopen_s(&file_log, "result.txt", "w+")) != 0)
 				printf("The log file was not opened\n");
 
+			_bstr_t b(g_toolVersion);
+			char *outputVersion = b;
 			// Write to log file
-			sprintf_s(log_buf, "%s \n%s \n", "FAIL", "[ERROR] IR CAMERA NOT FOUND");
+			sprintf_s(log_buf, "%s \n%s \n%s \n", "FAIL", "[ERROR] IMAGE QUALITY CHECK FAIL", outputVersion);
 			fwrite(log_buf, 1, sizeof(log_buf), file_log);
 			fclose(file_log);
 
@@ -798,6 +872,8 @@ namespace MainWindow
 				HRESULT hr = g_pEngine->OnCaptureEvent(wParam, lParam);
 				if (FAILED(hr))
 				{
+					printf("g_pEngine->OnCaptureEvent error\n");
+
 					ShowError(hwnd, g_pEngine->ErrorID(), hr);
 					InvalidateRect(hwnd, NULL, FALSE);
 				}
