@@ -717,6 +717,7 @@ namespace MainWindow
 		IShellItem *psi = NULL;
 		PWSTR pszFolderPath = NULL;
 
+		/*
 		HRESULT hr = SHCreateItemInKnownFolder(FOLDERID_Documents, 0, NULL, IID_PPV_ARGS(&psi));
 		if (FAILED(hr))
 		{
@@ -732,7 +733,7 @@ namespace MainWindow
 
 			goto done;
 		}
-
+		
 		// Construct a file name based on the current time.
 
 		SYSTEMTIME time;
@@ -776,6 +777,7 @@ namespace MainWindow
 			ShowError(hwnd, IDS_ERR_PHOTO, hr);
 		}
 		UpdateUI(hwnd);
+		*/
 	}
 
 	void OnCommand(HWND hwnd, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)

@@ -309,8 +309,8 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	//judge the light or dark
 	if (evalueCount == skipFrame-1) {
 		printf("prepare rendering ok\n");
-		int oddSum;
-		int evenSum;
+		int oddSum = 0;
+		int evenSum = 0;
 		for (int i = 0; i <= evalueCount; i++) {
 			//printf("i %d, avg %d\n", i, evalueArr[i]);
 			if (i % 2 == 1) {
