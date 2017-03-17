@@ -20,26 +20,48 @@
 int g_threshold;
 int g_op_mode;
 int g_countToCapture;
-WCHAR *g_toolVersion = L"version: 20170111-Test";
+int g_device_type;
+int g_select_no;
+
+WCHAR *g_toolVersion = L"version: 20170313-Test";
 FILE *file_log;
 HWND initWindow;
 
 // Main function for the console
 int main(int argc, char **argv) {
 
-	if (argc < 4)
+	if (argc < 6)
 	{
 		printf("[Error] PLease follow the format below\n");
-		printf("CaptureEngine.exe [threshold] [OPmode] [countToCapture]\n");
+		printf("CaptureEngine.exe [threshold] [OPmode] [countToCapture] [deviceType] [selectDeviceNo]\n");
+		printf("[deviceType]: \n");
+		printf("              0: IR camera\n");
+		printf("              1: RGB camera\n");
+		printf("[selectDeviceNo]: An integer(device count-1) used to determine the device you wanna test\n\n");
+		printf("The variables below is used in IR camera, but you should provide in normal camera !\n");
+		printf("[threshold]: An integer used to judge pass or fail\n");
+		printf("[OPmode]: \n");
+		printf("          0: no display mode \n");
+		printf("          1: display normally\n");
+		printf("          2: display light mode \n");
+		printf("          3: display dark mode \n");
+		printf("[countToCapture]: Start capture after numbers of frame\n");
+
+
 		exit(1);
 	}
+
 	std::string threshold(argv[1]);
 	std::string op_mode(argv[2]);
 	std::string countToCapture(argv[3]);
+	std::string select_devType(argv[4]);
+	std::string select_devNo(argv[5]);
 
 	g_threshold = std::stoi(threshold);
 	g_op_mode = std::stoi(op_mode);
 	g_countToCapture = std::stoi(countToCapture);
+	g_device_type = std::stoi(select_devType);
+	g_select_no = std::stoi(select_devNo);
 
 	// Calling the wWinMain function to start the GUI program
 	// Parameters:
@@ -377,14 +399,14 @@ namespace MainWindow
 			goto done;
 		}
 
-		hr = g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
+		/*hr = g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
 		if (FAILED(hr))
 		{
 			printf("g_pEngine->InitializeCaptureManager error\n");
 
 			ShowError(hwnd, IDS_ERR_SET_DEVICE, hr);
 			goto done;
-		}
+		}*/
 
 		// Register for connected standy changes.  This should come through the normal
 		// WM_POWERBROADCAST messages that we're already handling below.
@@ -455,7 +477,7 @@ namespace MainWindow
 			UnregisterSuspendResumeNotification(g_hPowerNotify);
 			g_hPowerNotify = NULL;
 		}
-		PostQuitMessage(0);
+		//PostQuitMessage(0);
 	}
 
 	void OnChooseDevice(HWND hwnd)
@@ -480,7 +502,16 @@ namespace MainWindow
 
 			goto done;
 		}
-		hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_CATEGORY, KSCATEGORY_SENSOR_CAMERA);
+
+		if (g_device_type == 0) {
+			printf("find IR camera\n");
+			hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_CATEGORY, KSCATEGORY_SENSOR_CAMERA);
+		}
+		else {
+			printf("find RGB camera\n");
+			hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_CATEGORY, KSCATEGORY_VIDEO_CAMERA);
+		}
+
 		if (FAILED(hr))
 		{
 			printf("pAttributes->SetGUID2 error\n");
@@ -515,6 +546,9 @@ namespace MainWindow
 
 			exit(1);
 		}
+		else {
+			printf("MFEnumDeviceSources device count %d\n", param.count);
+		}
 
 		// Ask the user to select one.
 		/* Skip selection and use default
@@ -527,7 +561,7 @@ namespace MainWindow
 		if (1)
 		{
 			//UINT iDevice = param.selection;
-			UINT iDevice = 0; //Default use 1
+			UINT iDevice = g_select_no; //Default use 1
 			if (iDevice >= param.count)
 			{
 				hr = E_UNEXPECTED;
@@ -717,7 +751,6 @@ namespace MainWindow
 		IShellItem *psi = NULL;
 		PWSTR pszFolderPath = NULL;
 
-		/*
 		HRESULT hr = SHCreateItemInKnownFolder(FOLDERID_Documents, 0, NULL, IID_PPV_ARGS(&psi));
 		if (FAILED(hr))
 		{
@@ -733,7 +766,7 @@ namespace MainWindow
 
 			goto done;
 		}
-		
+
 		// Construct a file name based on the current time.
 
 		SYSTEMTIME time;
@@ -777,7 +810,6 @@ namespace MainWindow
 			ShowError(hwnd, IDS_ERR_PHOTO, hr);
 		}
 		UpdateUI(hwnd);
-		*/
 	}
 
 	void OnCommand(HWND hwnd, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)
@@ -880,8 +912,9 @@ namespace MainWindow
 					InvalidateRect(hwnd, NULL, FALSE);
 				}
 			}
-
+			
 			UpdateUI(hwnd);
+			printf("WM_APP_CAPTURE_EVENT\n");
 		}
 		return 0;
 		case WM_POWERBROADCAST:
@@ -889,16 +922,16 @@ namespace MainWindow
 			switch (wParam)
 			{
 			case PBT_APMSUSPEND:
-				DbgPrint(L"++WM_POWERBROADCAST++ Stopping both preview & record stream.\n");
+				printf("++WM_POWERBROADCAST++ Stopping both preview & record stream.\n");
 				g_fSleepState = true;
 				g_pEngine->SleepState(g_fSleepState);
 				g_pEngine->StopRecord();
 				g_pEngine->StopPreview();
 				g_pEngine->DestroyCaptureEngine();
-				DbgPrint(L"++WM_POWERBROADCAST++ streams stopped, capture engine destroyed.\n");
+				printf("++WM_POWERBROADCAST++ streams stopped, capture engine destroyed.\n");
 				break;
 			case PBT_APMRESUMEAUTOMATIC:
-				DbgPrint(L"++WM_POWERBROADCAST++ Reinitializing capture engine.\n");
+				printf("++WM_POWERBROADCAST++ Reinitializing capture engine.\n");
 				g_fSleepState = false;
 				g_pEngine->SleepState(g_fSleepState);
 				g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
@@ -918,17 +951,17 @@ namespace MainWindow
 					if (dwData == 0 && !g_fSleepState)
 					{
 						// This is a AOAC machine, and we're about to turn off our monitor, let's stop recording/preview.
-						DbgPrint(L"++WM_POWERBROADCAST++ Stopping both preview & record stream.\n");
+						printf("++WM_POWERBROADCAST++ Stopping both preview & record stream.\n");
 						g_fSleepState = true;
 						g_pEngine->SleepState(g_fSleepState);
 						g_pEngine->StopRecord();
 						g_pEngine->StopPreview();
 						g_pEngine->DestroyCaptureEngine();
-						DbgPrint(L"++WM_POWERBROADCAST++ streams stopped, capture engine destroyed.\n");
+						printf("++WM_POWERBROADCAST++ streams stopped, capture engine destroyed.\n");
 					}
 					else if (dwData != 0 && g_fSleepState)
 					{
-						DbgPrint(L"++WM_POWERBROADCAST++ Reinitializing capture engine.\n");
+						printf("++WM_POWERBROADCAST++ Reinitializing capture engine.\n");
 						g_fSleepState = false;
 						g_pEngine->SleepState(g_fSleepState);
 						g_pEngine->InitializeCaptureManager(hPreview, pSelectedDevice);
@@ -940,7 +973,7 @@ namespace MainWindow
 			default:
 				// Don't care about this one, we always get the resume automatic so just
 				// latch onto that one.
-				DbgPrint(L"++WM_POWERBROADCAST++ (wParam=%u,lParam=%u)\n", wParam, lParam);
+				printf("++WM_POWERBROADCAST++ (wParam=%u,lParam=%u)\n", wParam, lParam);
 				break;
 			}
 		}

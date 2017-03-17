@@ -14,7 +14,8 @@ IMFDXGIDeviceManager* g_pDXGIMan = NULL;
 ID3D11Device*         g_pDX11Device = NULL;
 UINT                  g_ResetToken = 0;
 HWND g_hwndPreviewCopy;
-
+bool errorFlag = false;
+IUnknown* g_pSelectedDevice = NULL;
 
 //extern parameters define in winmain.cpp
 extern int g_threshold;
@@ -261,14 +262,23 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					fclose(file_log);
 
 					//release parameters
-					/*pSampleBuffer->Unlock();
+					pSampleBuffer->Unlock();
 					pSampleBuffer->Release();
-					g_pEngine->StopPreview();*/
+					g_pEngine->StopPreview();
 
 					//PostMessage(initWindow, WM_DESTROY, NULL, 0L);
 
-					//exit
-					exit(0);
+					//release device selected and exit
+					g_pSelectedDevice->Release();
+					if (errorFlag==false)
+					{
+						exit(0);
+					}
+					else {
+						printf("capture ok, and recovery complete\n");
+						//system("pause");
+						exit(0);
+					}
 
 					//system("PAUSE");
 				}
@@ -309,8 +319,8 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	//judge the light or dark
 	if (evalueCount == skipFrame-1) {
 		printf("prepare rendering ok\n");
-		int oddSum = 0;
-		int evenSum = 0;
+		int oddSum;
+		int evenSum;
 		for (int i = 0; i <= evalueCount; i++) {
 			//printf("i %d, avg %d\n", i, evalueArr[i]);
 			if (i % 2 == 1) {
@@ -420,6 +430,7 @@ HRESULT CreateD3DManager()
 HRESULT
 CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 {
+	g_pSelectedDevice = pUnk;
 	HRESULT                         hr = S_OK;
 	IMFAttributes*                  pAttributes = NULL;
 	IMFCaptureEngineClassFactory*   pFactory = NULL;
@@ -535,7 +546,7 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 		printf("pEvent->GetStatus error\n");
 		hrStatus = hr;
 	}
-
+	printf("GetExtendedType\n");
 	hr = pEvent->GetExtendedType(&guidType);
 	if (SUCCEEDED(hr))
 	{
@@ -551,38 +562,63 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 
 		if (guidType == MF_CAPTURE_ENGINE_INITIALIZED)
 		{
+			printf("OnCaptureEngineInitialized\n");
 			OnCaptureEngineInitialized(hrStatus);
 			SetErrorID(hrStatus, IDS_ERR_INITIALIZE);
 		}
 		else if (guidType == MF_CAPTURE_ENGINE_PREVIEW_STARTED)
 		{
+			printf("OnPreviewStarted\n");
 			OnPreviewStarted(hrStatus);
 			SetErrorID(hrStatus, IDS_ERR_PREVIEW);
 		}
 		else if (guidType == MF_CAPTURE_ENGINE_PREVIEW_STOPPED)
 		{
+			printf("OnPreviewStopped\n");
 			OnPreviewStopped(hrStatus);
 			SetErrorID(hrStatus, IDS_ERR_PREVIEW);
 		}
 		else if (guidType == MF_CAPTURE_ENGINE_RECORD_STARTED)
 		{
+			printf("OnRecordStarted\n");
 			OnRecordStarted(hrStatus);
 			SetErrorID(hrStatus, IDS_ERR_RECORD);
 		}
 		else if (guidType == MF_CAPTURE_ENGINE_RECORD_STOPPED)
 		{
+			printf("OnRecordStopped\n");
 			OnRecordStopped(hrStatus);
 			SetErrorID(hrStatus, IDS_ERR_RECORD);
 		}
 		else if (guidType == MF_CAPTURE_ENGINE_PHOTO_TAKEN)
 		{
+			printf("m_bPhotoPending\n");
 			m_bPhotoPending = false;
 			SetErrorID(hrStatus, IDS_ERR_PHOTO);
 		}
 		else if (guidType == MF_CAPTURE_ENGINE_ERROR)
 		{
+			printf("DestroyCaptureEngine\n");
 			DestroyCaptureEngine();
-			SetErrorID(hrStatus, IDS_ERR_CAPTURE);
+			/*SetErrorID(hrStatus, IDS_ERR_CAPTURE);*/
+
+			delete g_pEngine;
+			g_pEngine = NULL;
+
+			//re-init
+			while (FAILED(CaptureManager::CreateInstance(initWindow, &g_pEngine)))
+			{
+				printf("CaptureManager::CreateInstance error\n");
+				//goto done;
+				Sleep(10000);
+			}
+
+			Sleep(5000);
+
+			//capture again
+			errorFlag = true;
+			PostMessage(initWindow, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
+			SUCCEEDED(hrStatus);
 		}
 		else if (FAILED(hrStatus))
 		{
