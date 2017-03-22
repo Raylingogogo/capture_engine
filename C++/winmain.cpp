@@ -34,11 +34,6 @@ int main(int argc, char **argv) {
 	{
 		printf("[Error] PLease follow the format below\n");
 		printf("CaptureEngine.exe [threshold] [OPmode] [countToCapture] [deviceType] [selectDeviceNo]\n");
-		printf("[deviceType]: \n");
-		printf("              0: IR camera\n");
-		printf("              1: RGB camera\n");
-		printf("[selectDeviceNo]: An integer(device count-1) used to determine the device you wanna test\n\n");
-		printf("The variables below is used in IR camera, but you should provide in normal camera !\n");
 		printf("[threshold]: An integer used to judge pass or fail\n");
 		printf("[OPmode]: \n");
 		printf("          0: no display mode \n");
@@ -46,7 +41,11 @@ int main(int argc, char **argv) {
 		printf("          2: display light mode \n");
 		printf("          3: display dark mode \n");
 		printf("[countToCapture]: Start capture after numbers of frame\n");
-
+		printf("[deviceType]: \n");
+		printf("              0: IR camera\n");
+		printf("              1: RGB camera\n");
+		printf("[selectDeviceNo]: An integer(device count-1) used to determine the device you wanna test\n\n");
+		printf("The variables below is used in IR camera, but you should provide in normal camera !\n");
 
 		exit(1);
 	}
@@ -531,7 +530,6 @@ namespace MainWindow
 		if (param.count == 0)
 		{
 			char log_buf[100] = { 0 };
-			printf("[ERROR] IR CAMERA NOT FOUND \n");
 
 			// Stream File open
 			if ((fopen_s(&file_log, "result.txt", "w+")) != 0)
@@ -540,7 +538,19 @@ namespace MainWindow
 			_bstr_t b(g_toolVersion);
 			char *outputVersion = b;
 			// Write to log file
-			sprintf_s(log_buf, "%s \n%s \n%s \n", "FAIL", "[ERROR] IR CAMERA NOT FOUND", outputVersion);
+			if (g_device_type == 0) {
+				printf("[ERROR] IR CAMERA NOT FOUND \n");
+				sprintf_s(log_buf, "%s \n%s \n%s \n", "FAIL", "[ERROR] IR CAMERA NOT FOUND", outputVersion);
+			}
+			else if (g_device_type == 1) {
+				printf("[ERROR] RGB CAMERA NOT FOUND \n");
+				sprintf_s(log_buf, "%s \n%s \n%s \n", "FAIL", "[ERROR] RGB CAMERA NOT FOUND", outputVersion);
+			}
+			else {
+				printf("[ERROR] UNKNOWN CAMERA  NOT FOUND \n");
+				sprintf_s(log_buf, "%s \n%s \n%s \n", "FAIL", "[ERROR] UNKNOWN CAMERA NOT FOUND", outputVersion);
+			}
+			
 			fwrite(log_buf, 1, sizeof(log_buf), file_log);
 			fclose(file_log);
 
