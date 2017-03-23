@@ -21,6 +21,8 @@ IUnknown* g_pSelectedDevice = NULL;
 extern int g_threshold;
 extern int g_op_mode;
 extern int g_countToCapture;
+extern int g_select_no;
+extern int g_resolutionIndex;
 extern WCHAR *g_toolVersion;
 extern FILE *file_log;
 extern CaptureManager *g_pEngine;
@@ -712,16 +714,53 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			goto done;
 		}
 
+		
+		int count = 0;
+		HRESULT nativeTypeErrorCode = S_OK;
+		while (nativeTypeErrorCode == S_OK) {
+			nativeTypeErrorCode = pSource->GetAvailableDeviceMediaType(g_select_no, count, &pMediaType);
+			if (nativeTypeErrorCode == MF_E_NO_MORE_TYPES)
+				break;
+			UINT32 m1_width, m1_height;
+			hr = MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &m1_width, &m1_height);
+			if (FAILED(hr))
+			{
+				printf("MFGetAttributeSize error\n");
+				goto done;
+			}
+
+			//hr = MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &m1_width, &m1_height);
+			UINT32 numeratorFrameRate, denominatorFrameRate;
+			hr = MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &numeratorFrameRate, &denominatorFrameRate);
+			if (FAILED(hr))
+			{
+				printf("MFGetAttributeRatio error\n");
+				goto done;
+			}
+
+			printf("[Supported resolution %d] (W*H)=%d*%d, %d FPS\n", count, m1_width, m1_height, numeratorFrameRate/denominatorFrameRate);
+			count++;
+		}
+
+		if (g_resolutionIndex >= count) {
+			g_resolutionIndex = 0;
+			printf("wrong resolution index, and set it to default\n");
+		}
+		int myRes = pSource->GetAvailableDeviceMediaType(g_select_no, g_resolutionIndex, &pMediaType);
+		if (myRes != S_OK) {
+			printf("fail to GetAvailableDeviceMediaType\n");
+			goto done;
+		}
+
 		// Configure the video format for the preview sink.
-		hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, &pMediaType);
+		/*hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, &pMediaType);
 		if (FAILED(hr))
 		{
 			printf("pSource->GetCurrentDeviceMediaType error\n");
 			goto done;
-		}
+		}*/
 
 		// Keep the format of YUY2 (MEDIASUBTYPE_YUY2)
-
 		hr = CloneVideoMediaType(pMediaType, MFVideoFormat_RGB24, &pMediaType2);
 
 		if (FAILED(hr))
@@ -745,6 +784,13 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		}
 		uiFps = uiNumerator / uiDenominator;
 		printf("[Format] frame rate = %d \n", uiFps);
+
+		/*hr = MFSetAttributeSize(pMediaType2, MF_MT_FRAME_SIZE, 1920, 1080);
+		if (FAILED(hr))
+		{
+			printf("fail to set 1080p\n");
+			goto done;
+		}*/
 
 		UINT32 uiWidth, uiHeight;
 		hr = MFGetAttributeSize(pMediaType2, MF_MT_FRAME_SIZE, &uiWidth, &uiHeight);

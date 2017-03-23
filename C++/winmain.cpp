@@ -22,6 +22,7 @@ int g_op_mode;
 int g_countToCapture;
 int g_device_type;
 int g_select_no;
+int g_resolutionIndex;
 
 WCHAR *g_toolVersion = L"version: 20170313-Test";
 FILE *file_log;
@@ -30,10 +31,10 @@ HWND initWindow;
 // Main function for the console
 int main(int argc, char **argv) {
 
-	if (argc < 6)
+	if (argc < 7)
 	{
 		printf("[Error] PLease follow the format below\n");
-		printf("CaptureEngine.exe [threshold] [OPmode] [countToCapture] [deviceType] [selectDeviceNo]\n");
+		printf("CaptureEngine.exe [threshold] [OPmode] [countToCapture] [deviceType] [selectDeviceNo] [resolution]\n");
 		printf("[threshold]: An integer used to judge pass or fail\n");
 		printf("[OPmode]: \n");
 		printf("          0: no display mode \n");
@@ -46,6 +47,7 @@ int main(int argc, char **argv) {
 		printf("              1: RGB camera\n");
 		printf("[selectDeviceNo]: An integer(device count-1) used to determine the device you wanna test\n\n");
 		printf("The variables below is used in IR camera, but you should provide in normal camera !\n");
+		printf("[resolution]: An integer used to select provided resolution (default value should be 0)\n");
 
 		exit(1);
 	}
@@ -55,12 +57,14 @@ int main(int argc, char **argv) {
 	std::string countToCapture(argv[3]);
 	std::string select_devType(argv[4]);
 	std::string select_devNo(argv[5]);
+	std::string select_resolution(argv[6]);
 
 	g_threshold = std::stoi(threshold);
 	g_op_mode = std::stoi(op_mode);
 	g_countToCapture = std::stoi(countToCapture);
 	g_device_type = std::stoi(select_devType);
 	g_select_no = std::stoi(select_devNo);
+	g_resolutionIndex = std::stoi(select_resolution);
 
 	// Calling the wWinMain function to start the GUI program
 	// Parameters:
