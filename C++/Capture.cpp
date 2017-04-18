@@ -324,7 +324,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		int oddSum;
 		int evenSum;
 		for (int i = 0; i <= evalueCount; i++) {
-			//printf("i %d, avg %d\n", i, evalueArr[i]);
+			printf("i %d, avg %d\n", i, evalueArr[i]);
 			if (i % 2 == 1) {
 				oddSum += evalueArr[i];
 			}
@@ -334,7 +334,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 
 			if (i == evalueCount) { // last one
 				BrightCount = (oddSum > evenSum) ? 1 : 0;
-
+				printf("brightCount==%d\n",BrightCount);
 				//init bitmap
 				ZeroMemory(&g_BitmapInfo, sizeof(BITMAPINFO));
 				g_BitmapInfo.bmiHeader.biBitCount = 24;
