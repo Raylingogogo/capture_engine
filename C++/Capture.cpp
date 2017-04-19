@@ -533,6 +533,11 @@ Exit:
 	return hr;
 }
 
+void CaptureManager::setGCapture(bool capture)
+{
+	g_Capture_photo = capture;
+}
+
 // Handle an event from the capture engine. 
 // NOTE: This method is called from the application's UI thread. 
 HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)

@@ -868,13 +868,19 @@ namespace MainWindow
 
 			if (g_pEngine->IsPreviewing())
 			{
-				OnStopPreview(hwnd);
+				//OnStopPreview(hwnd);
+				printf("capture directly\n");
+				g_pEngine->setGCapture(capture_photo);
 			}
-			// Start photo capture
-			// Post message to enum device
-			PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
-			// Note: Need to wait for device preparation
-			PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
+			else
+			{
+				// Start photo capture
+				printf("start capture service\n");
+				// Post message to enum device
+				PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
+				// Note: Need to wait for device preparation
+				PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
+			}
 			break;
 		}
 		case ID_JUMP_TO_FAIL:

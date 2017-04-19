@@ -259,6 +259,7 @@ public:
 	bool    IsPreviewing() const { return m_bPreviewing; }
 	bool    IsRecording() const { return m_bRecording; }
 	bool    IsPhotoPending() const { return m_bPhotoPending; }
+	void	setGCapture(bool capture);
 	UINT    ErrorID() const { return m_errorID; }
 
 	HRESULT OnCaptureEvent(WPARAM wParam, LPARAM lParam);
