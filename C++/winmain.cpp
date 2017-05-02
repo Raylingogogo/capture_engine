@@ -565,11 +565,12 @@ namespace MainWindow
 		}
 
 		// Ask the user to select one.
-		/* Skip selection and use default
-		INT_PTR result = DialogBoxParam(GetModuleHandle(NULL),
+		// Skip selection and use default
+		//pop out dialog
+		/*INT_PTR result = DialogBoxParam(GetModuleHandle(NULL),
 		MAKEINTRESOURCE(IDD_CHOOSE_DEVICE), hwnd,
-		ChooseDeviceDlgProc, (LPARAM)&param);
-		*/
+		ChooseDeviceDlgProc, (LPARAM)&param);*/
+		
 
 		//if ((result == IDOK) && (param.selection != (UINT32)-1))
 		if (1)

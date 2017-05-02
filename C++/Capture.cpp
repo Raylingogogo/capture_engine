@@ -10,6 +10,8 @@
 
 #include <string>
 
+EXTERN_GUID(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 0xa634a91c, 0x822b, 0x41b9, 0xa4, 0x94, 0x4d, 0xe4, 0x64, 0x36, 0x12, 0xb0);
+
 IMFDXGIDeviceManager* g_pDXGIMan = NULL;
 ID3D11Device*         g_pDX11Device = NULL;
 UINT                  g_ResetToken = 0;
@@ -145,6 +147,12 @@ HANDLE g_hSemaphore;
 
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
+	/*UINT64 illuminationEnabled;
+	pSample->GetUINT64(MF_CAPTURE_METADATA_FRAME_ILLUMINATION, &illuminationEnabled);*/
+
+
+	//printf("%s\n", illuminationEnabled ? "light" : "dark"); 
+
 	//printf("evalueCount %d, g_countToCapture %d\n", evalueCount, g_countToCapture);
 	if (evalueCount==g_countToCapture && g_countToCapture!=-1) {
 		g_Capture_photo = TRUE;
@@ -495,6 +503,13 @@ CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 		printf("pAttributes->SetUnknown error\n");
 		goto Exit;
 	}
+
+	/*hr = pAttributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
+	if (FAILED(hr))
+	{
+		printf("pAttributes->SetUINT32 error\n");
+		goto Exit;
+	}*/
 
 	// Create the factory object for the capture engine.
 	hr = CoCreateInstance(CLSID_MFCaptureEngineClassFactory, NULL,
