@@ -134,6 +134,7 @@ STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
 
 int evalueCount=0;
 int skipFrame = 30;
+int evalueArr[128];
 UINT32 g_Width, g_Height;
 BITMAPINFO g_BitmapInfo;
 BYTE *g_pbInputData = NULL;
@@ -144,7 +145,7 @@ DWORD average_sum = 0;
 int maxSum = 0;
 BYTE *g_max_pbInputData = NULL;
 DWORD g_max_dwMaxLength = 0;
-int bufferingDone = -1;
+int BrightCount = -1;
 
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
@@ -199,7 +200,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		average_sum += *(pbInputData + i);
 	average_sum /= dwMaxLength;
 
-	if (bufferingDone != -1) {
+	if (BrightCount != -1) {
 		if (g_Capture_photo) {
 			printf("This evalue Count %d\n", evalueCount);
 
@@ -267,12 +268,34 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 			exit(0);
 			
 		} else {//start display
-			RedrawWindow(g_hwndPreviewCopy, NULL, NULL, RDW_INTERNALPAINT | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+			switch (g_op_mode)
+			{
+			case 1:
+				RedrawWindow(g_hwndPreviewCopy, NULL, NULL, RDW_INTERNALPAINT | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+				break;
+			case 2:
+				if (BrightCount != -1) {
+					if (evalueCount % 2 == BrightCount) { //display light one
+						RedrawWindow(g_hwndPreviewCopy, NULL, NULL, RDW_INTERNALPAINT | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+					}
+				}
+				break;
+			case 3:
+				if (BrightCount != -1) {
+					if (evalueCount % 2 == ((BrightCount + 1) % 2)) { //display dark one
+						RedrawWindow(g_hwndPreviewCopy, NULL, NULL, RDW_INTERNALPAINT | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+					}
+				}
+				break;
+			default:
+				break;
+			}
 		}
 	}
 
 	//add avg to evaluation array
 	if (evalueCount < skipFrame) {
+		evalueArr[evalueCount] = average_sum;
 		//printf("buffering %d %d\n", maxSum, average_sum);
 		if (average_sum > maxSum) {
 			maxSum = average_sum;
@@ -290,17 +313,32 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 
 	//judge the light or dark
 	if (evalueCount == skipFrame-1) {
-		bufferingDone = 1;
-		//printf("bufferingDone\n");
-		//init bitmap
-		ZeroMemory(&g_BitmapInfo, sizeof(BITMAPINFO));
-		g_BitmapInfo.bmiHeader.biBitCount = 24;
-		g_BitmapInfo.bmiHeader.biWidth = g_Width;
-		g_BitmapInfo.bmiHeader.biHeight = g_Height;
-		g_BitmapInfo.bmiHeader.biPlanes = 1;
-		g_BitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-		g_BitmapInfo.bmiHeader.biSizeImage = g_Width * g_Height * (24 / 8);;
-		g_BitmapInfo.bmiHeader.biCompression = BI_RGB;
+		printf("prepare rendering ok\n");
+		int oddSum = 0;
+		int evenSum = 0;
+		for (int i = 0; i <= evalueCount; i++) {
+			//printf("i %d, avg %d\n", i, evalueArr[i]);
+			if (i % 2 == 1) {
+				oddSum += evalueArr[i];
+			}
+			else {
+				evenSum += evalueArr[i];
+			}
+
+			if (i == evalueCount) { // last one
+				BrightCount = (oddSum > evenSum) ? 1 : 0;
+				//printf("brightCount==%d\n",BrightCount);
+				//init bitmap
+				ZeroMemory(&g_BitmapInfo, sizeof(BITMAPINFO));
+				g_BitmapInfo.bmiHeader.biBitCount = 24;
+				g_BitmapInfo.bmiHeader.biWidth = g_Width;
+				g_BitmapInfo.bmiHeader.biHeight = g_Height;
+				g_BitmapInfo.bmiHeader.biPlanes = 1;
+				g_BitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+				g_BitmapInfo.bmiHeader.biSizeImage = g_Width * g_Height * (24 / 8);;
+				g_BitmapInfo.bmiHeader.biCompression = BI_RGB;
+			}
+		}
 	}
 
 	evalueCount++;
@@ -814,7 +852,7 @@ HRESULT CaptureManager::StopPreview()
 {
 	//init capture parameters
 	evalueCount = 0;
-	bufferingDone = -1;
+	BrightCount = -1;
 	average_sum= 0;
 
 	//close engine
