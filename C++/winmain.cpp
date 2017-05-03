@@ -24,7 +24,7 @@ int g_device_type;
 int g_select_no;
 int g_resolutionIndex;
 
-WCHAR *g_toolVersion = L"version: 20170503";
+WCHAR *g_toolVersion = L"version: 20170503-1";
 FILE *file_log;
 HWND initWindow;
 
