@@ -23,6 +23,7 @@ IUnknown* g_pSelectedDevice = NULL;
 extern int g_threshold;
 extern int g_op_mode;
 extern int g_countToCapture;
+extern int g_device_type;
 extern int g_select_no;
 extern int g_resolutionIndex;
 extern WCHAR *g_toolVersion;
@@ -213,12 +214,28 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 			//if(1) {
 				printf("frame index %d, this evalue Count %d, BrightCount %d, avg %d\n", frame_index, evalueCount, BrightCount, average_sum[frame_index]);
 
-				//inverse
-				for (DWORD i = 0; i < dwMaxLength / 2; i++) {
-					BYTE tmp;
-					tmp = pbInputData[i];
-					pbInputData[i] = pbInputData[dwMaxLength - i - 1];
-					pbInputData[dwMaxLength - i - 1] = tmp;
+				if (g_device_type == 0) { //IR
+					//inverse
+					for (DWORD i = 0; i < dwMaxLength / 2; i++) {
+						BYTE tmp;
+						tmp = pbInputData[i];
+						pbInputData[i] = pbInputData[dwMaxLength - i - 1];
+						pbInputData[dwMaxLength - i - 1] = tmp;
+					}
+				}
+				else { //RGB
+					for (DWORD i = 0; i < dwMaxLength / 2; i+=3) {
+						BYTE tmpR, tmpG, tmpB;
+						tmpR = pbInputData[i];
+						tmpG = pbInputData[i+1];
+						tmpB = pbInputData[i+2];
+						pbInputData[i+2] = pbInputData[dwMaxLength - i - 1];
+						pbInputData[i+1] = pbInputData[dwMaxLength - i - 2];
+						pbInputData[i  ] = pbInputData[dwMaxLength - i - 3];
+						pbInputData[dwMaxLength - i - 1] = tmpB;
+						pbInputData[dwMaxLength - i - 2] = tmpG;
+						pbInputData[dwMaxLength - i - 3] = tmpR;
+					}
 				}
 
 				setlocale(LC_ALL, "en_US.UTF-8");
@@ -737,8 +754,9 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		
 		int count = 0;
 		HRESULT nativeTypeErrorCode = S_OK;
+		int pinNO = 0;
 		while (nativeTypeErrorCode == S_OK) {
-			nativeTypeErrorCode = pSource->GetAvailableDeviceMediaType(g_select_no, count, &pMediaType);
+			nativeTypeErrorCode = pSource->GetAvailableDeviceMediaType(pinNO, count, &pMediaType);
 			if (nativeTypeErrorCode == MF_E_NO_MORE_TYPES)
 				break;
 			UINT32 m1_width, m1_height;
@@ -766,7 +784,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			g_resolutionIndex = 0;
 			printf("wrong resolution index, and set it to default\n");
 		}
-		int myRes = pSource->GetAvailableDeviceMediaType(g_select_no, g_resolutionIndex, &pMediaType);
+		int myRes = pSource->GetAvailableDeviceMediaType(pinNO, g_resolutionIndex, &pMediaType);
 		if (myRes != S_OK) {
 			printf("fail to GetAvailableDeviceMediaType\n");
 			goto done;
