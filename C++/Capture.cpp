@@ -137,9 +137,11 @@ int evalueArr[128];
 UINT32 g_Width, g_Height;
 BITMAPINFO g_BitmapInfo;
 BYTE *g_pbInputData = NULL;
+BYTE *g_light_pbInputData = NULL;
 bool  g_Capture_photo=FALSE;
 LONGLONG preTimeStamp;
 DWORD average_sum[2] = { 0 };
+DWORD g_light_dwMaxLength = 0;
 
 void initOnSampleVariables() {
 	evalueCount = 0;
@@ -153,9 +155,9 @@ void initOnSampleVariables() {
 
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
-	UINT64 illuminationEnabled;
+	/*UINT64 illuminationEnabled;
 	pSample->GetUINT64(MF_CAPTURE_METADATA_FRAME_ILLUMINATION, &illuminationEnabled);
-	printf("%s\n", illuminationEnabled ? "light" : "dark"); 
+	printf("%s\n", illuminationEnabled ? "light" : "dark"); */
 
 	//if our count is equal to the countdown of capture, then start capture
 	if (evalueCount==g_countToCapture && g_countToCapture!=-1) {
@@ -245,6 +247,12 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					}
 				}
 
+				if (frame_index == 0) {
+					g_light_dwMaxLength = dwMaxLength;
+					g_light_pbInputData = (BYTE*)calloc(g_light_dwMaxLength, sizeof(BYTE));
+					memcpy(g_light_pbInputData, pbInputData, dwMaxLength);
+				}
+
 				//set output file format
 				setlocale(LC_ALL, "en_US.UTF-8");
 				HANDLE file;
@@ -292,6 +300,19 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					sprintf_s(log_buf, "%s \n[diff, frame 1, frame 2] = [%d, %d, %d]\n%s\n", diff > g_threshold ? "PASS" : "FAIL", diff, average_sum[0], average_sum[1], outputVersion);
 					fwrite(log_buf, 1, sizeof(log_buf), file_log);
 					fclose(file_log);
+
+					//save frame difference
+					HANDLE file2;
+					DWORD write2 = 0;
+					file2 = CreateFile(L"difference.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
+					WriteFile(file2, &fileHeader, sizeof(fileHeader), &write2, NULL);
+					WriteFile(file2, &fileInfo, sizeof(fileInfo), &write2, NULL);
+
+					//subtract
+					for (DWORD i = 0; i < g_light_dwMaxLength; i++) 
+						g_light_pbInputData[i] = (g_light_pbInputData[i] > pbInputData[i]) ? g_light_pbInputData[i] - pbInputData[i] : 0;
+
+					WriteFile(file2, g_light_pbInputData, g_light_dwMaxLength, &write2, NULL);
 
 					//release parameters
 					pSampleBuffer->Unlock();
@@ -344,7 +365,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		printf("prepare rendering ok\n");
 		int oddSum=0, evenSum=0;
 		for (int i = 0; i <= evalueCount; i++) {
-			printf("i %d, avg %d\n", i, evalueArr[i]);
+			//printf("i %d, avg %d\n", i, evalueArr[i]);
 			if (i % 2 == 1) {
 				oddSum += evalueArr[i];
 			}
@@ -354,7 +375,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 
 			if (i == evalueCount) { // last one
 				BrightCount = (oddSum > evenSum) ? 1 : 0;
-				printf("brightCount==%d\n",BrightCount);
+				//printf("brightCount==%d\n",BrightCount);
 				//init bitmap
 				ZeroMemory(&g_BitmapInfo, sizeof(BITMAPINFO));
 				g_BitmapInfo.bmiHeader.biBitCount = 24;
