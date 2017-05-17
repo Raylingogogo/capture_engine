@@ -10,22 +10,19 @@
 
 #include <string>
 
-EXTERN_GUID(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 0xa634a91c, 0x822b, 0x41b9, 0xa4, 0x94, 0x4d, 0xe4, 0x64, 0x36, 0x12, 0xb0);
+//EXTERN_GUID(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 0xa634a91c, 0x822b, 0x41b9, 0xa4, 0x94, 0x4d, 0xe4, 0x64, 0x36, 0x12, 0xb0);
 
 IMFDXGIDeviceManager* g_pDXGIMan = NULL;
 ID3D11Device*         g_pDX11Device = NULL;
 UINT                  g_ResetToken = 0;
+
 HWND g_hwndPreviewCopy;
 bool errorFlag = false;
 IUnknown* g_pSelectedDevice = NULL;
 
 //extern parameters define in winmain.cpp
-extern int g_threshold;
-extern int g_op_mode;
-extern int g_countToCapture;
-extern int g_device_type;
-extern int g_select_no;
-extern int g_resolutionIndex;
+extern int g_threshold, g_op_mode, g_countToCapture, g_device_type, g_resolutionIndex, g_pin_no;
+extern int g_frame_rate;
 extern WCHAR *g_toolVersion;
 extern FILE *file_log;
 extern CaptureManager *g_pEngine;
@@ -33,6 +30,7 @@ extern HWND initWindow;
 
 STDMETHODIMP CaptureManager::CaptureEngineCB::QueryInterface(REFIID riid, void** ppv)
 {
+	printf("CaptureEngineCB, IMFCaptureEngineOnEventCallback\n");
 	static const QITAB qit[] =
 	{
 		QITABENT(CaptureEngineCB, IMFCaptureEngineOnEventCallback),
@@ -110,6 +108,7 @@ STDMETHODIMP CaptureManager::CaptureEngineCB::OnEvent(_In_ IMFMediaEvent* pEvent
 
 STDMETHODIMP CaptureManager::CaptureEngineSampleCB::QueryInterface(REFIID riid, void** ppv)
 {
+	printf("CaptureEngineSampleCB, IMFCaptureEngineOnSampleCallback\n");
 	static const QITAB qit[] =
 	{
 		QITABENT(CaptureEngineSampleCB, IMFCaptureEngineOnSampleCallback),
@@ -133,37 +132,38 @@ STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
 	return cRef;
 }
 
-int evalueCount=0;
+int evalueCount, BrightCount, skipFrame, frame_index;
 int evalueArr[128];
-int BrightCount=-1;
-
-int skipFrame = 30;
-int frame_index = 0;
 UINT32 g_Width, g_Height;
 BITMAPINFO g_BitmapInfo;
 BYTE *g_pbInputData = NULL;
 bool  g_Capture_photo=FALSE;
+LONGLONG preTimeStamp;
 DWORD average_sum[2] = { 0 };
-HANDLE g_hSemaphore;
+
+void initOnSampleVariables() {
+	evalueCount = 0;
+	BrightCount = -1;
+	skipFrame = (g_pin_no==2)?2:30;
+	frame_index = 0;
+	average_sum[0] = 0;
+	average_sum[1] = 0;
+	preTimeStamp = 0;
+}
 
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
-	/*UINT64 illuminationEnabled;
-	pSample->GetUINT64(MF_CAPTURE_METADATA_FRAME_ILLUMINATION, &illuminationEnabled);*/
+	UINT64 illuminationEnabled;
+	pSample->GetUINT64(MF_CAPTURE_METADATA_FRAME_ILLUMINATION, &illuminationEnabled);
+	printf("%s\n", illuminationEnabled ? "light" : "dark"); 
 
-
-	//printf("%s\n", illuminationEnabled ? "light" : "dark"); 
-
-	//printf("evalueCount %d, g_countToCapture %d\n", evalueCount, g_countToCapture);
+	//if our count is equal to the countdown of capture, then start capture
 	if (evalueCount==g_countToCapture && g_countToCapture!=-1) {
 		g_Capture_photo = TRUE;
 		printf("start Capture, count=%d\n", g_countToCapture);
 	}
 
-	WaitForSingleObject(
-		g_hSemaphore,   // handle to semaphore
-		10L);           // zero-second time-out interval
-
+	//get the parameters of timing information
 	LONGLONG frameTimeStamp, frameDuration;
 	pSample->GetSampleTime(&frameTimeStamp); // micro second level
 	DWORD tickCount = (DWORD)(frameTimeStamp / 10000); //ms level
@@ -171,6 +171,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	DWORD bufferCount;
 	pSample->GetBufferCount(&bufferCount);
 
+	//setup the parameters of video buffer
 	HRESULT hr = S_OK;
 	DWORD	dwBufferCount = 0;
 	IMFMediaBuffer *pSampleBuffer = NULL;
@@ -180,7 +181,6 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	char log_buf[250] = { 0 };
 
 	hr = pSample->GetTotalLength(&dwBufferCount);
-
 	if (FAILED(hr))
 	{
 		printf("GetTotalLength error\n");
@@ -195,9 +195,16 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		goto done;
 	}
 
+	//lock this buffer area
 	pSampleBuffer->Lock(&pbInputData, &dwMaxLength, &dwCurrentLength);
 	//printf("TimeStamp, duration = [%ld, %lld, %ld, %ld]\n", tickCount, frameDuration, bufferCount, dwMaxLength);
 	g_pbInputData = pbInputData;
+
+	//update FPS to UI
+	int FPS = (tickCount - preTimeStamp != 0) ? 1000 / (tickCount - preTimeStamp) : 0;
+	g_frame_rate = FPS;
+	PostMessage(initWindow, WM_COMMAND, ID_SET_FRAME_RATE, 0L); //update FPS to UI
+	preTimeStamp = tickCount;
 
 	// Calculate average
 	average_sum[frame_index] = 0;
@@ -205,13 +212,13 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		average_sum[frame_index] += *(pbInputData + i);
 	average_sum[frame_index] /= dwMaxLength;
 
+	//start to capture if buffering is complete
 	if (BrightCount != -1) {
-		if (g_Capture_photo) {
+		if (g_Capture_photo) {//allow to capture
 
 			if ((frame_index == 0 && (evalueCount%2 == BrightCount))      ||//light one
 				 frame_index == 1 ) {//next one
 				 
-			//if(1) {
 				printf("frame index %d, this evalue Count %d, BrightCount %d, avg %d\n", frame_index, evalueCount, BrightCount, average_sum[frame_index]);
 
 				if (g_device_type == 0) { //IR
@@ -238,37 +245,35 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					}
 				}
 
+				//set output file format
 				setlocale(LC_ALL, "en_US.UTF-8");
 				HANDLE file;
-
-				BITMAPFILEHEADER fileHeader;
-				BITMAPINFOHEADER fileInfo;
-
 				DWORD write = 0;
 				if (frame_index == 0)
-					file = CreateFile(L"light.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);  //Sets up the new bmp to be written to
+					file = CreateFile(L"light.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
 				else
-					file = CreateFile(L"dark.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);  //Sets up the new bmp to be written to
+					file = CreateFile(L"dark.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
 				
-				fileHeader.bfType = 19778;                                                                    //Sets our type to BM or bmp
-				fileHeader.bfSize = sizeof(fileHeader.bfOffBits) + sizeof(RGBTRIPLE);                                                //Sets the size equal to the size of the header struct
-				fileHeader.bfReserved1 = 0;                                                                    //sets the reserves to 0
+				//write file headers and bitmap data to output
+				BITMAPFILEHEADER fileHeader;
+				BITMAPINFOHEADER fileInfo;
+				fileHeader.bfType = 19778;//Sets our type to BM or bmp
+				fileHeader.bfSize = sizeof(fileHeader.bfOffBits) + sizeof(RGBTRIPLE);//Sets the size equal to the size of the header struct
+				fileHeader.bfReserved1 = 0;//sets the reserves to 0
 				fileHeader.bfReserved2 = 0;
-				fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);                    //Sets offbits equal to the size of file and info header
+				fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);//Sets offbits equal to the size of file and info header
+				WriteFile(file, &fileHeader, sizeof(fileHeader), &write, NULL);
 
 				fileInfo = g_BitmapInfo.bmiHeader;
 				fileInfo.biXPelsPerMeter = 2400;
 				fileInfo.biYPelsPerMeter = 2400;
 				fileInfo.biClrImportant = 0;
 				fileInfo.biClrUsed = 0;
-
-				WriteFile(file, &fileHeader, sizeof(fileHeader), &write, NULL);
 				WriteFile(file, &fileInfo, sizeof(fileInfo), &write, NULL);
-
+				
 				WriteFile(file, pbInputData, dwMaxLength, &write, NULL);
 
-				frame_index++;
-				if (frame_index == 2)
+				if (frame_index == 1)
 				{
 					int diff = abs((int)(average_sum[0] - average_sum[1]));
 					printf("frame 0 average = %d \n", average_sum[0]);
@@ -279,7 +284,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					if ((err = fopen_s(&file_log, "result.txt", "w+")) != 0)
 						printf("The log file was not opened\n");
 
-					//char *outputVersion = "version: 20170106";
+					//write tool version to ouput file
 					_bstr_t b(g_toolVersion);
 					char *outputVersion = b;
 
@@ -292,23 +297,14 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					pSampleBuffer->Unlock();
 					pSampleBuffer->Release();
 					g_pEngine->StopPreview();
-
-					//PostMessage(initWindow, WM_DESTROY, NULL, 0L);
+					g_pSelectedDevice->Release();
 
 					//release device selected and exit
-					g_pSelectedDevice->Release();
-					if (errorFlag==false)
-					{
-						exit(0);
-					}
-					else {
+					if (errorFlag==true)
 						printf("capture ok, and recovery complete\n");
-						//system("pause");
-						exit(0);
-					}
-
-					//system("PAUSE");
+					exit(0);
 				}
+				frame_index++;
 			}
 			else {
 				printf("skip this frame %d, avg %d\n", evalueCount, average_sum[frame_index]);
@@ -346,10 +342,9 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	//judge the light or dark
 	if (evalueCount == skipFrame-1) {
 		printf("prepare rendering ok\n");
-		int oddSum=0;
-		int evenSum=0;
+		int oddSum=0, evenSum=0;
 		for (int i = 0; i <= evalueCount; i++) {
-			//printf("i %d, avg %d\n", i, evalueArr[i]);
+			printf("i %d, avg %d\n", i, evalueArr[i]);
 			if (i % 2 == 1) {
 				oddSum += evalueArr[i];
 			}
@@ -359,7 +354,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 
 			if (i == evalueCount) { // last one
 				BrightCount = (oddSum > evenSum) ? 1 : 0;
-				//printf("brightCount==%d\n",BrightCount);
+				printf("brightCount==%d\n",BrightCount);
 				//init bitmap
 				ZeroMemory(&g_BitmapInfo, sizeof(BITMAPINFO));
 				g_BitmapInfo.bmiHeader.biBitCount = 24;
@@ -380,10 +375,6 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	pSampleBuffer->Release();
 
 done:
-	ReleaseSemaphore(
-		g_hSemaphore,  // handle to semaphore
-		1,            // increase count by one
-		NULL);
 	return hr;
 }
 
@@ -488,18 +479,6 @@ CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 	m_pCallback->m_pManager = this;
 	m_hwndPreview = hwndPreview;
 	g_hwndPreviewCopy = hwndPreview;
-	
-	g_hSemaphore = CreateSemaphore(
-		NULL,           // default security attributes
-		1,  // initial count
-		1,  // maximum count
-		NULL);          // unnamed semaphore
-
-	if (g_hSemaphore == NULL)
-	{
-		printf("CreateSemaphore error: %d\n", GetLastError());
-		return 1;
-	}
 
 	//Create a D3D Manager
 	hr = CreateD3DManager();
@@ -544,6 +523,7 @@ CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 		printf("pFactory->CreateInstance error\n");
 		goto Exit;
 	}
+
 	hr = m_pEngine->Initialize(m_pCallback, pAttributes, NULL, pUnk);
 	if (FAILED(hr))
 	{
@@ -585,7 +565,6 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 		printf("pEvent->GetStatus error\n");
 		hrStatus = hr;
 	}
-	printf("GetExtendedType\n");
 	hr = pEvent->GetExtendedType(&guidType);
 	if (SUCCEEDED(hr))
 	{
@@ -632,7 +611,8 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 		else if (guidType == MF_CAPTURE_ENGINE_PHOTO_TAKEN)
 		{
 			printf("m_bPhotoPending\n");
-			m_bPhotoPending = false;
+			//m_bPhotoPending = false;
+			m_pEngine->TakePhoto();//continuous take photo 
 			SetErrorID(hrStatus, IDS_ERR_PHOTO);
 		}
 		else if (guidType == MF_CAPTURE_ENGINE_ERROR)
@@ -702,6 +682,8 @@ void CaptureManager::OnRecordStopped(HRESULT& hrStatus)
 
 HRESULT CaptureManager::StartPreview(bool capture_photo)
 {
+	initOnSampleVariables();
+
 	if (m_pEngine == NULL)
 	{
 		return MF_E_NOT_INITIALIZED;
@@ -713,6 +695,8 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 	}
 
 	IMFCaptureSink *pSink = NULL;
+	IMFCaptureRecordSink *pRecord = NULL;
+	IMFCapturePhotoSink *pPhoto = NULL;
 	IMFMediaType *pMediaType = NULL;
 	IMFMediaType *pMediaType2 = NULL;
 	IMFCaptureSource *pSource = NULL;
@@ -724,14 +708,46 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 	// Get a pointer to the preview sink.
 	if (m_pPreview == NULL)
 	{
-		hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_PREVIEW, &pSink);
+		switch (g_pin_no)
+		{
+		case 1://record
+			hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_RECORD, &pSink);
+			printf("Select record pin\n");
+			break;
+		case 2://still
+			hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_PHOTO, &pSink);
+			printf("Select still pin\n");
+			break;
+		case 0://preview
+		default:
+			hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_PREVIEW, &pSink);
+			printf("Select preview pin\n");
+			break;
+		}
+
 		if (FAILED(hr))
 		{
 			printf("m_pEngine->GetSink error\n");
 			goto done;
 		}
 
-		hr = pSink->QueryInterface(IID_PPV_ARGS(&m_pPreview));
+		switch (g_pin_no)
+		{
+		case 1://record
+			hr = pSink->QueryInterface(IID_PPV_ARGS(&pRecord));
+			printf("query record pin\n");
+			break;
+		case 2://still
+			hr = pSink->QueryInterface(IID_PPV_ARGS(&pPhoto));
+			printf("query still pin\n");
+			break;
+		case 0://preview
+		default:
+			hr = pSink->QueryInterface(IID_PPV_ARGS(&m_pPreview));
+			printf("query preview pin\n");
+			break;
+		}
+
 		if (FAILED(hr))
 		{
 			printf("pSink->QueryInterface error\n");
@@ -754,9 +770,10 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		
 		int count = 0;
 		HRESULT nativeTypeErrorCode = S_OK;
-		int pinNO = 0;
+		int streamIndex = 0;
+		//query suppported resolution
 		while (nativeTypeErrorCode == S_OK) {
-			nativeTypeErrorCode = pSource->GetAvailableDeviceMediaType(pinNO, count, &pMediaType);
+			nativeTypeErrorCode = pSource->GetAvailableDeviceMediaType(streamIndex, count, &pMediaType);
 			if (nativeTypeErrorCode == MF_E_NO_MORE_TYPES)
 				break;
 			UINT32 m1_width, m1_height;
@@ -784,23 +801,40 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			g_resolutionIndex = 0;
 			printf("wrong resolution index, and set it to default\n");
 		}
-		int myRes = pSource->GetAvailableDeviceMediaType(pinNO, g_resolutionIndex, &pMediaType);
+		
+		//select resolution
+		int myRes = pSource->GetAvailableDeviceMediaType(streamIndex, g_resolutionIndex, &pMediaType);
 		if (myRes != S_OK) {
 			printf("fail to GetAvailableDeviceMediaType\n");
 			goto done;
 		}
 
 		// Configure the video format for the preview sink.
-		/*hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, &pMediaType);
+		switch (g_pin_no)
+		{
+		case 1://record
+			hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_RECORD, &pMediaType);
+			printf("Get record pin\n");
+			break;
+		case 2://still
+			hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_PHOTO, &pMediaType);
+			printf("Get still pin\n");
+			break;
+		case 0://preview
+		default:
+			hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, &pMediaType);
+			printf("Get preview pin\n");
+			break;
+		}
+		
 		if (FAILED(hr))
 		{
 			printf("pSource->GetCurrentDeviceMediaType error\n");
 			goto done;
-		}*/
+		}
 
 		// Keep the format of YUY2 (MEDIASUBTYPE_YUY2)
 		hr = CloneVideoMediaType(pMediaType, MFVideoFormat_RGB24, &pMediaType2);
-
 		if (FAILED(hr))
 		{
 			printf("CloneVideoMediaType error\n");
@@ -849,22 +883,71 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		}
 
 		// Connect the video stream to the preview sink.
-		hr = m_pPreview->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, pMediaType2, NULL, &dwSinkStreamIndex);
+
+		switch (g_pin_no)
+		{
+		case 1://record
+			hr = pRecord->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_RECORD, pMediaType2, NULL, &dwSinkStreamIndex);
+			printf("Add record pin\n");
+			break;
+		case 2://still
+			hr = pPhoto->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_PHOTO, pMediaType2, NULL, &dwSinkStreamIndex);
+			printf("Add still pin\n");
+			break;
+		case 0://preview
+		default:
+			hr = m_pPreview->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, pMediaType2, NULL, &dwSinkStreamIndex);
+			printf("Add preview pin\n");
+			break;
+		}
 		if (FAILED(hr))
 		{
-			printf("m_pPreview->AddStream error\n");
+			printf("select pin error\n");
 			goto done;
 		}
 
 		// Set callback of sink
-		hr = m_pPreview->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback);
+		switch (g_pin_no)
+		{
+		case 1://record
+			hr = pRecord->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback);
+			printf("SetSampleCallback record pin\n");
+			break;
+		case 2://still
+			hr = pPhoto->SetSampleCallback(m_pSampleCallback);
+			printf("SetSampleCallback still pin\n");
+			break;
+		case 0://preview
+		default:
+			hr = m_pPreview->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback);
+			printf("SetSampleCallback preview pin\n");
+			break;
+		}
+
 		if (FAILED(hr))
 		{
 			printf("m_pPreview->SetSampleCallback error\n");
 			goto done;
 		}
 
-		hr = m_pEngine->StartPreview();
+		//
+		switch (g_pin_no)
+		{
+		case 1://record
+			hr = m_pEngine->StartRecord();
+			printf("StartRecord\n");
+			break;
+		case 2://still
+			hr = m_pEngine->TakePhoto();
+			printf("TakePhoto\n");
+			break;
+		case 0://preview
+		default:
+			hr = m_pEngine->StartPreview();
+			printf("StartPreview\n");
+			break;
+		}
+
 		if (FAILED(hr))
 		{
 			printf("m_pEngine->StartPreview error\n");
@@ -899,12 +982,7 @@ done:
 HRESULT CaptureManager::StopPreview()
 {
 	//init capture parameters
-	evalueCount = 0;
-    BrightCount = -1;
-	frame_index = 0;
-	average_sum[0]= 0;
-	average_sum[1]= 0;
-	CloseHandle(g_hSemaphore);
+	initOnSampleVariables();
 
 	//close engine
 	HRESULT hr = S_OK;
@@ -1344,19 +1422,12 @@ done:
 
 HRESULT CaptureManager::UpdateVideo(HDC hdc)
 {
-	if (m_pPreview)
-	{
-		int rv = StretchDIBits(hdc, g_Width, g_Height, -g_Width, -g_Height, 0, 0, g_Width, g_Height,
-			g_pbInputData, &g_BitmapInfo,
-			DIB_RGB_COLORS, SRCCOPY);
-		if (rv == 0) {
-			printf("StretchDIBits failed\n");
-		}
-		//return m_pPreview->UpdateVideo(NULL, NULL, NULL);
-		return S_OK;
+	int rv = StretchDIBits(hdc, g_Width, g_Height, -g_Width, -g_Height, 0, 0, g_Width, g_Height,
+		g_pbInputData, &g_BitmapInfo,
+		DIB_RGB_COLORS, SRCCOPY);
+	if (rv == 0) {
+		printf("StretchDIBits failed\n");
 	}
-	else
-	{
-		return S_OK;
-	}
+
+	return S_OK;
 }

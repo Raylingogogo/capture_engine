@@ -17,12 +17,8 @@
 #include <iostream>
 #include <string>
 
-int g_threshold;
-int g_op_mode;
-int g_countToCapture;
-int g_device_type;
-int g_select_no;
-int g_resolutionIndex;
+int g_threshold, g_op_mode, g_countToCapture, g_device_type, g_select_no, g_resolutionIndex, g_pin_no;
+int g_frame_rate;
 
 WCHAR *g_toolVersion = L"version: 201700508";
 FILE *file_log;
@@ -31,10 +27,10 @@ HWND initWindow;
 // Main function for the console
 int main(int argc, char **argv) {
 
-	if (argc < 7)
+	if (argc < 8)
 	{
 		printf("[Error] PLease follow the format below\n");
-		printf("CaptureEngine.exe [threshold] [OPmode] [countToCapture] [deviceType] [selectDeviceNo] [resolution]\n");
+		printf("CaptureEngine.exe [threshold] [OPmode] [countToCapture] [deviceType] [selectDeviceNo] [resolution] [pinNO]\n");
 		printf("[threshold]: An integer used to judge pass or fail\n");
 		printf("[OPmode]: \n");
 		printf("          0: no display mode \n");
@@ -48,6 +44,10 @@ int main(int argc, char **argv) {
 		printf("[selectDeviceNo]: An integer(device count-1) used to determine the device you wanna test\n\n");
 		printf("The variables below is used in IR camera, but you should provide in normal camera !\n");
 		printf("[resolution]: An integer used to select provided resolution (default value should be 0)\n");
+		printf("[pinNO]: \n");
+		printf("       0: preview pin\n");
+		printf("       1: record pin\n");
+		printf("       2: still pin\n");
 
 		exit(1);
 	}
@@ -58,6 +58,7 @@ int main(int argc, char **argv) {
 	std::string select_devType(argv[4]);
 	std::string select_devNo(argv[5]);
 	std::string select_resolution(argv[6]);
+	std::string select_pin(argv[7]);
 
 	g_threshold = std::stoi(threshold);
 	g_op_mode = std::stoi(op_mode);
@@ -65,6 +66,7 @@ int main(int argc, char **argv) {
 	g_device_type = std::stoi(select_devType);
 	g_select_no = std::stoi(select_devNo);
 	g_resolutionIndex = std::stoi(select_resolution);
+	g_pin_no = std::stoi(select_pin);
 
 	// Calling the wWinMain function to start the GUI program
 	// Parameters:
@@ -509,6 +511,8 @@ namespace MainWindow
 		if (g_device_type == 0) {
 			printf("find IR camera\n");
 			hr = pAttributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_CATEGORY, KSCATEGORY_SENSOR_CAMERA);
+			
+			//hr = pAttributes->SetGUID(KSPROPERTY_CAMERACONTROL_EXTENDED_PROPERTY, );
 		}
 		else {
 			printf("find RGB camera\n");
@@ -867,21 +871,24 @@ namespace MainWindow
 		{
 			capture_photo = 1;
 
-			if (g_pEngine->IsPreviewing())
-			{
-				//OnStopPreview(hwnd);
-				printf("capture directly\n");
-				g_pEngine->setGCapture(capture_photo);
-			}
-			else
-			{
-				// Start photo capture
-				printf("start capture service\n");
-				// Post message to enum device
-				PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_CHOOSEDEVICE, 0L);
-				// Note: Need to wait for device preparation
-				PostMessage(hwnd, WM_COMMAND, ID_CAPTURE_PREVIEW, 0L);
-			}
+			printf("capture directly\n");
+			g_pEngine->setGCapture(capture_photo);
+			
+			break;
+		}
+		case ID_SET_FRAME_RATE:
+		{
+			//printf("set frame rate\n");
+			WCHAR titleName[100] = L"[IR Test Tool] ";
+			wcscat(titleName, g_toolVersion);
+
+			WCHAR frameRate[16];
+			swprintf_s(frameRate, L"   FPS:%d", g_frame_rate);
+			wcscat(titleName, frameRate);
+
+			//set window size and title
+			SetWindowText(hwnd, titleName);
+
 			break;
 		}
 		case ID_JUMP_TO_FAIL:
@@ -935,7 +942,6 @@ namespace MainWindow
 			}
 			
 			UpdateUI(hwnd);
-			printf("WM_APP_CAPTURE_EVENT\n");
 		}
 		return 0;
 		case WM_POWERBROADCAST:

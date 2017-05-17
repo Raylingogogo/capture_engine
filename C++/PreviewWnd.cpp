@@ -30,20 +30,17 @@ namespace PreviewWnd
 
     void OnPaint(HWND hwnd)
     {
-		//printf("on paint %d\n", paintCount++);
+		
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
 
-        if (g_pEngine->IsPreviewing())
-        {
-			//printf("update\n");
-            g_pEngine->UpdateVideo(hdc);
-        }
-        else
-        {
-			//printf("FillRect\n");
-            FillRect(hdc, &ps.rcPaint, hBackgroundBrush);
-        }
+		if (paintCount == 0) { //initial background
+			FillRect(hdc, &ps.rcPaint, hBackgroundBrush);
+			printf("on paint %d\n", paintCount++);
+		}
+        
+		g_pEngine->UpdateVideo(hdc);
+        
         EndPaint(hwnd, &ps);
     }
 
