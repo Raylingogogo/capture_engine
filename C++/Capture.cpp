@@ -139,8 +139,11 @@ BITMAPINFO g_BitmapInfo;
 BYTE *g_pbInputData = NULL;
 BYTE *g_light_pbInputData = NULL;
 bool  g_Capture_photo=FALSE;
+LONGLONG firstTimeStamp;
 LONGLONG preTimeStamp;
 DWORD average_sum[2] = { 0 };
+int timestampCounter;
+int timestampDiff[256] = { 0 };
 DWORD g_light_dwMaxLength = 0;
 
 void initOnSampleVariables() {
@@ -148,9 +151,11 @@ void initOnSampleVariables() {
 	BrightCount = -1;
 	skipFrame = (g_pin_no==2)?2:30;
 	frame_index = 0;
-	average_sum[0] = 0;
-	average_sum[1] = 0;
+	memset(average_sum, 0, sizeof(LONGLONG)*2);
+	memset(timestampDiff, 0, sizeof(int) * 256);
+	firstTimeStamp = 0;
 	preTimeStamp = 0;
+	timestampCounter = 0;
 }
 
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
@@ -202,11 +207,36 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	//printf("TimeStamp, duration = [%ld, %lld, %ld, %ld]\n", tickCount, frameDuration, bufferCount, dwMaxLength);
 	g_pbInputData = pbInputData;
 
-	//update FPS to UI
-	int FPS = (tickCount - preTimeStamp != 0) ? 1000 / (tickCount - preTimeStamp) : 0;
-	g_frame_rate = FPS;
-	PostMessage(initWindow, WM_COMMAND, ID_SET_FRAME_RATE, 0L); //update FPS to UI
+	
+	//initialize the first timestamp
+	if (evalueCount == 0)
+		firstTimeStamp = preTimeStamp = tickCount;
+
+	//cache frame rate
+	timestampDiff[timestampCounter++] = (tickCount - preTimeStamp != 0) ? (tickCount - preTimeStamp) : 0;
+
+	//display every one second
+	if (tickCount - firstTimeStamp >= 1000) {
+		int sum = 0;
+		int validNum = 0;
+		for (int i = 0; i < timestampCounter; i++) {
+			if (timestampDiff[i] != 0) {
+				sum += timestampDiff[i];
+				validNum++;
+			}
+		}
+		sum /= validNum;
+		g_frame_rate = 1000 / sum;
+		printf("timestampCounter %d, validNum %d, FPS %d\n", timestampCounter, validNum, g_frame_rate);
+
+		timestampCounter = 0;
+		firstTimeStamp = tickCount;
+		
+		//update FPS to UI
+		PostMessage(initWindow, WM_COMMAND, ID_SET_FRAME_RATE, 0L); //update FPS to UI
+	}
 	preTimeStamp = tickCount;
+	
 
 	// Calculate average
 	average_sum[frame_index] = 0;
