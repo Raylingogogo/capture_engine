@@ -7,7 +7,10 @@
 
 #include "Capture.h"
 #include "resource.h"
-
+#include <ks.h>
+#include <Ksmedia.h>
+#include <mfreadwrite.h>
+#include <ksproxy.h>
 #include <string>
 
 //EXTERN_GUID(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 0xa634a91c, 0x822b, 0x41b9, 0xa4, 0x94, 0x4d, 0xe4, 0x64, 0x36, 0x12, 0xb0);
@@ -160,9 +163,30 @@ void initOnSampleVariables() {
 
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
-	/*UINT64 illuminationEnabled;
-	pSample->GetUINT64(MF_CAPTURE_METADATA_FRAME_ILLUMINATION, &illuminationEnabled);
-	printf("%s\n", illuminationEnabled ? "light" : "dark"); */
+	IMFAttributes *pSourceAttributes = NULL;
+	int ret = pSample->GetUnknown(MFSampleExtension_CaptureMetadata, IID_PPV_ARGS(&pSourceAttributes));
+	/*switch (ret)
+	{
+	case S_OK:
+	{
+		UINT64 illuminationEnabled;
+		pSourceAttributes->GetUINT64(MF_CAPTURE_METADATA_FRAME_ILLUMINATION, &illuminationEnabled);
+		printf("%s\n", illuminationEnabled ? "light" : "dark");
+		break;
+	}
+	case E_NOINTERFACE:
+		printf("E_NOINTERFACE\n");
+		break;
+	case MF_E_ATTRIBUTENOTFOUND:
+		printf("MF_E_ATTRIBUTENOTFOUND\n");
+		break;
+	case MF_E_INVALIDTYPE:
+		printf("MF_E_INVALIDTYPE\n");
+		break;
+	default:
+		printf("undefine message\n");
+		break;
+	}*/
 
 	//if our count is equal to the countdown of capture, then start capture
 	if (evalueCount==g_countToCapture && g_countToCapture!=-1) {
@@ -244,6 +268,8 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		average_sum[frame_index] += *(pbInputData + i);
 	average_sum[frame_index] /= dwMaxLength;
 
+	//printf("dwMaxLength %d, WxH=%d\n", dwMaxLength, g_Width*g_Height);
+
 	//start to capture if buffering is complete
 	if (BrightCount != -1) {
 		if (g_Capture_photo) {//allow to capture
@@ -253,27 +279,30 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				 
 				printf("frame index %d, this evalue Count %d, BrightCount %d, avg %d\n", frame_index, evalueCount, BrightCount, average_sum[frame_index]);
 
-				if (g_device_type == 0) { //IR
-					//inverse
-					for (DWORD i = 0; i < dwMaxLength / 2; i++) {
-						BYTE tmp;
-						tmp = pbInputData[i];
-						pbInputData[i] = pbInputData[dwMaxLength - i - 1];
-						pbInputData[dwMaxLength - i - 1] = tmp;
-					}
+				for (DWORD i = 0; i < dwMaxLength / 2; i += 3) {
+					BYTE tmpR, tmpG, tmpB;
+					tmpR = pbInputData[i];
+					tmpG = pbInputData[i + 1];
+					tmpB = pbInputData[i + 2];
+					pbInputData[i] = pbInputData[dwMaxLength - i - 3];
+					pbInputData[i + 1] = pbInputData[dwMaxLength - i - 2];
+					pbInputData[i + 2] = pbInputData[dwMaxLength - i - 1];
+					pbInputData[dwMaxLength - i - 1] = tmpB;
+					pbInputData[dwMaxLength - i - 2] = tmpG;
+					pbInputData[dwMaxLength - i - 3] = tmpR;
 				}
-				else { //RGB
-					for (DWORD i = 0; i < dwMaxLength / 2; i+=3) {
+				for (int i = 0; i < g_Height; i++) {
+					for (int j = 0; j < g_Width/2; j++) {
 						BYTE tmpR, tmpG, tmpB;
-						tmpR = pbInputData[i];
-						tmpG = pbInputData[i+1];
-						tmpB = pbInputData[i+2];
-						pbInputData[i+2] = pbInputData[dwMaxLength - i - 1];
-						pbInputData[i+1] = pbInputData[dwMaxLength - i - 2];
-						pbInputData[i  ] = pbInputData[dwMaxLength - i - 3];
-						pbInputData[dwMaxLength - i - 1] = tmpB;
-						pbInputData[dwMaxLength - i - 2] = tmpG;
-						pbInputData[dwMaxLength - i - 3] = tmpR;
+						tmpR = pbInputData[(i*g_Width + j) * 3    ];
+						tmpG = pbInputData[(i*g_Width + j) * 3 + 1];
+						tmpB = pbInputData[(i*g_Width + j) * 3 + 2];
+						pbInputData[(i*g_Width + j) * 3    ] = pbInputData[(i*g_Width + g_Width - j) * 3 - 3];
+						pbInputData[(i*g_Width + j) * 3 + 1] = pbInputData[(i*g_Width + g_Width - j) * 3 - 2];
+						pbInputData[(i*g_Width + j) * 3 + 2] = pbInputData[(i*g_Width + g_Width - j) * 3 - 1];
+						pbInputData[(i*g_Width + g_Width - j) * 3 - 3] = tmpR;
+						pbInputData[(i*g_Width + g_Width - j) * 3 - 2] = tmpG;
+						pbInputData[(i*g_Width + g_Width - j) * 3 - 1] = tmpB;
 					}
 				}
 
@@ -859,6 +888,72 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			printf("fail to GetAvailableDeviceMediaType\n");
 			goto done;
 		}
+
+		//get media source and kscontrol
+		bool *isMirrored = false;
+		IKsControl *ksControl = NULL;
+		IMFMediaSource *mediaSource = NULL;
+		hr = pSource->GetCaptureDeviceSource(MF_CAPTURE_ENGINE_DEVICE_TYPE_VIDEO, &mediaSource);
+		if (SUCCEEDED(hr)) {
+			hr = mediaSource->QueryInterface(IID_PPV_ARGS(&ksControl));
+		}
+
+		// First check if device supports this property
+		if (SUCCEEDED(hr))
+		{
+			printf("First check if device supports this property\n");
+			KSSTREAM_METADATA_INFO  myheader = { 0 };
+			KSPROPERTY myProperty = {
+				KSPROPERTYSETID_ExtendedCameraControl,
+				KSPROPERTY_CAMERACONTROL_EXTENDED_METADATA,
+				KSPROPERTY_TYPE_SET
+			};
+
+			myheader.Flags = KSSTREAM_HEADER_OPTIONSF_METADATA;
+
+			/*myheader.Version = 1;
+			myheader.PinId = KSCAMERA_EXTENDEDPROP_FILTERSCOPE; 
+			myheader.Size = sizeof(KSCAMERA_EXTENDEDPROP_HEADER) + sizeof(KSCAMERA_EXTENDEDPROP_VIDEOPROCSETTING);
+			//myheader.Capability = KSCAMERA_EXTENDEDPROP_FACEAUTH_MODE_ALTERNATIVE_FRAME_ILLUMINATION;
+			myheader.Flags = KSCAMERA_EXTENDEDPROP_FACEAUTH_MODE_ALTERNATIVE_FRAME_ILLUMINATION;
+			*/
+			DWORD bytesReturned = 0;
+			hr = ksControl->KsProperty((PKSPROPERTY)&myProperty, sizeof(myProperty), &myheader, sizeof(myheader), &bytesReturned);
+			if (SUCCEEDED(hr))
+			{
+				// Fail if mirroring isn't supported on this device 
+				/*if ((capsR.VideoControlCaps & KS_VideoControlFlag_FlipHorizontal) == 0)
+				{
+					hr = HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
+					printf("not support this property\n");
+				}*/
+				printf("get value %d", myheader.Flags);
+			}
+			else {
+				printf("********fail to get KsProperty********** %x\n", hr);
+			}
+		}
+		// Query the current mirroring state from the device
+		if (SUCCEEDED(hr))
+		{
+			printf("Query the current mirroring state from the device\n");
+			KSPROPERTY_VIDEOCONTROL_MODE_S mode = { 0 };
+
+			mode.Property.Set = PROPSETID_VIDCAP_VIDEOCONTROL;
+			mode.Property.Id = KSPROPERTY_VIDEOCONTROL_MODE;
+			mode.Property.Flags = KSPROPERTY_TYPE_GET;
+			mode.StreamIndex = streamIndex;
+			mode.Mode = 0;
+
+			ULONG bytesReturned = 0;
+			hr = ksControl->KsProperty((PKSPROPERTY)&mode, sizeof(mode), &mode, sizeof(mode), &bytesReturned);
+			if (SUCCEEDED(hr))
+			{
+				*isMirrored = (mode.Mode & KS_VideoControlFlag_FlipHorizontal) != 0;
+			}
+		}
+
+		//printf("isMirrored: %d\n", *isMirrored);
 
 		// Configure the video format for the preview sink.
 		switch (g_pin_no)

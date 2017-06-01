@@ -151,6 +151,7 @@ class CaptureManager
 	};
 
 
+
 	HWND                    m_hwndEvent;
 	HWND                    m_hwndPreview;
 
