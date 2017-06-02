@@ -157,6 +157,8 @@ class CaptureManager
 
 	IMFCaptureEngine        *m_pEngine;
 	IMFCapturePreviewSink   *m_pPreview;
+	IMFCaptureRecordSink	*m_pRecord = NULL;
+	IMFCapturePhotoSink		*m_pPhoto = NULL;
 
 	CaptureEngineCB         *m_pCallback;
 	CaptureEngineSampleCB	*m_pSampleCallback;
@@ -172,7 +174,7 @@ class CaptureManager
 
 
 	CaptureManager(HWND hwnd) :
-		m_hwndEvent(hwnd), m_hwndPreview(NULL), m_pEngine(NULL), m_pPreview(NULL),
+		m_hwndEvent(hwnd), m_hwndPreview(NULL), m_pEngine(NULL), m_pPreview(NULL), m_pRecord(NULL), m_pPhoto(NULL),
 		m_pCallback(NULL), m_pSampleCallback(NULL), m_bRecording(false), m_bPreviewing(false), m_bPhotoPending(false), m_errorID(0), m_hEvent(NULL)
 		, m_hpwrRequest(INVALID_HANDLE_VALUE)
 		, m_fPowerRequestSet(false)

@@ -36,7 +36,7 @@ namespace PreviewWnd
 
 		if (paintCount == 0) { //initial background
 			FillRect(hdc, &ps.rcPaint, hBackgroundBrush);
-			printf("on paint %d\n", paintCount++);
+			printf("On paint %d\n", paintCount++);
 		}
         
 		g_pEngine->UpdateVideo(hdc);

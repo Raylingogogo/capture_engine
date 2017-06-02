@@ -13,15 +13,11 @@
 #include <ksproxy.h>
 #include <string>
 
-//EXTERN_GUID(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 0xa634a91c, 0x822b, 0x41b9, 0xa4, 0x94, 0x4d, 0xe4, 0x64, 0x36, 0x12, 0xb0);
-
 IMFDXGIDeviceManager* g_pDXGIMan = NULL;
 ID3D11Device*         g_pDX11Device = NULL;
 UINT                  g_ResetToken = 0;
 
 HWND g_hwndPreviewCopy;
-bool errorFlag = false;
-IUnknown* g_pSelectedDevice = NULL;
 
 //extern parameters define in winmain.cpp
 extern int g_threshold, g_op_mode, g_countToCapture, g_device_type, g_resolutionIndex, g_pin_no;
@@ -135,18 +131,19 @@ STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
 	return cRef;
 }
 
+// Parameters in onSample
 int evalueCount, BrightCount, skipFrame, frame_index;
 int evalueArr[128];
+int timestampCounter;
+int timestampDiff[256] = { 0 };
+bool  g_Capture_photo = FALSE;
 UINT32 g_Width, g_Height;
+LONGLONG firstTimeStamp;
+LONGLONG preTimeStamp;
 BITMAPINFO g_BitmapInfo;
 BYTE *g_pbInputData = NULL;
 BYTE *g_light_pbInputData = NULL;
-bool  g_Capture_photo=FALSE;
-LONGLONG firstTimeStamp;
-LONGLONG preTimeStamp;
 DWORD average_sum[2] = { 0 };
-int timestampCounter;
-int timestampDiff[256] = { 0 };
 DWORD g_light_dwMaxLength = 0;
 
 void initOnSampleVariables() {
@@ -154,11 +151,11 @@ void initOnSampleVariables() {
 	BrightCount = -1;
 	skipFrame = (g_pin_no==2)?2:30;
 	frame_index = 0;
-	memset(average_sum, 0, sizeof(LONGLONG)*2);
+	timestampCounter = 0;
 	memset(timestampDiff, 0, sizeof(int) * 256);
+	memset(average_sum, 0, sizeof(LONGLONG)*2);
 	firstTimeStamp = 0;
 	preTimeStamp = 0;
-	timestampCounter = 0;
 }
 
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
@@ -188,13 +185,13 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		break;
 	}*/
 
-	//if our count is equal to the countdown of capture, then start capture
+	// Start capture, if our count is equal to the countdown of capture
 	if (evalueCount==g_countToCapture && g_countToCapture!=-1) {
 		g_Capture_photo = TRUE;
 		printf("start Capture, count=%d\n", g_countToCapture);
 	}
 
-	//get the parameters of timing information
+	// Get the parameters of timing information
 	LONGLONG frameTimeStamp, frameDuration;
 	pSample->GetSampleTime(&frameTimeStamp); // micro second level
 	DWORD tickCount = (DWORD)(frameTimeStamp / 10000); //ms level
@@ -211,26 +208,14 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	errno_t err;
 	char log_buf[250] = { 0 };
 
-	hr = pSample->GetTotalLength(&dwBufferCount);
-	if (FAILED(hr))
-	{
-		printf("GetTotalLength error\n");
-		goto done;
-	}
-
 	// Get buffer from pSample
-	hr = pSample->ConvertToContiguousBuffer(&pSampleBuffer);
-	if (FAILED(hr))
-	{
-		printf("ConvertToContiguousBuffer error\n");
-		goto done;
-	}
+	if (FAILED(pSample->GetTotalLength(&dwBufferCount))) goto done;
+	if (FAILED(pSample->ConvertToContiguousBuffer(&pSampleBuffer))) goto done;
 
-	//lock this buffer area
+	// Lock this buffer area
 	pSampleBuffer->Lock(&pbInputData, &dwMaxLength, &dwCurrentLength);
-	//printf("TimeStamp, duration = [%ld, %lld, %ld, %ld]\n", tickCount, frameDuration, bufferCount, dwMaxLength);
 	g_pbInputData = pbInputData;
-
+	//printf("TimeStamp, duration = [%ld, %lld, %ld, %ld]\n", tickCount, frameDuration, bufferCount, dwMaxLength);
 	
 	//initialize the first timestamp
 	if (evalueCount == 0)
@@ -251,7 +236,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		}
 		sum /= validNum;
 		g_frame_rate = 1000 / sum;
-		printf("timestampCounter %d, validNum %d, FPS %d\n", timestampCounter, validNum, g_frame_rate);
+		//printf("timestampCounter %d, validNum %d, FPS %d\n", timestampCounter, validNum, g_frame_rate);
 
 		timestampCounter = 0;
 		firstTimeStamp = tickCount;
@@ -268,8 +253,6 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		average_sum[frame_index] += *(pbInputData + i);
 	average_sum[frame_index] /= dwMaxLength;
 
-	//printf("dwMaxLength %d, WxH=%d\n", dwMaxLength, g_Width*g_Height);
-
 	//start to capture if buffering is complete
 	if (BrightCount != -1) {
 		if (g_Capture_photo) {//allow to capture
@@ -279,6 +262,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				 
 				printf("frame index %d, this evalue Count %d, BrightCount %d, avg %d\n", frame_index, evalueCount, BrightCount, average_sum[frame_index]);
 
+				//swap up and down
 				for (DWORD i = 0; i < dwMaxLength / 2; i += 3) {
 					BYTE tmpR, tmpG, tmpB;
 					tmpR = pbInputData[i];
@@ -291,6 +275,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					pbInputData[dwMaxLength - i - 2] = tmpG;
 					pbInputData[dwMaxLength - i - 3] = tmpR;
 				}
+				//swap left and right
 				for (int i = 0; i < g_Height; i++) {
 					for (int j = 0; j < g_Width/2; j++) {
 						BYTE tmpR, tmpG, tmpB;
@@ -336,10 +321,14 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				fileInfo.biYPelsPerMeter = 2400;
 				fileInfo.biClrImportant = 0;
 				fileInfo.biClrUsed = 0;
+
+				//write file information to file
 				WriteFile(file, &fileInfo, sizeof(fileInfo), &write, NULL);
-				
+
+				//write data to file
 				WriteFile(file, pbInputData, dwMaxLength, &write, NULL);
 
+				//Calculate and dump result to result.txt
 				if (frame_index == 1)
 				{
 					int diff = abs((int)(average_sum[0] - average_sum[1]));
@@ -377,11 +366,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					pSampleBuffer->Unlock();
 					pSampleBuffer->Release();
 					g_pEngine->StopPreview();
-					g_pSelectedDevice->Release();
 
-					//release device selected and exit
-					if (errorFlag==true)
-						printf("capture ok, and recovery complete\n");
 					exit(0);
 				}
 				frame_index++;
@@ -528,7 +513,6 @@ HRESULT CreateD3DManager()
 HRESULT
 CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 {
-	g_pSelectedDevice = pUnk;
 	HRESULT                         hr = S_OK;
 	IMFAttributes*                  pAttributes = NULL;
 	IMFCaptureEngineClassFactory*   pFactory = NULL;
@@ -579,13 +563,6 @@ CaptureManager::InitializeCaptureManager(HWND hwndPreview, IUnknown* pUnk)
 		printf("pAttributes->SetUnknown error\n");
 		goto Exit;
 	}
-
-	/*hr = pAttributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
-	if (FAILED(hr))
-	{
-		printf("pAttributes->SetUINT32 error\n");
-		goto Exit;
-	}*/
 
 	// Create the factory object for the capture engine.
 	hr = CoCreateInstance(CLSID_MFCaptureEngineClassFactory, NULL,
@@ -690,7 +667,7 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 		}
 		else if (guidType == MF_CAPTURE_ENGINE_PHOTO_TAKEN)
 		{
-			printf("m_bPhotoPending\n");
+			//printf("m_bPhotoPending\n");
 			//m_bPhotoPending = false;
 			m_pEngine->TakePhoto();//continuous take photo 
 			SetErrorID(hrStatus, IDS_ERR_PHOTO);
@@ -699,7 +676,7 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 		{
 			printf("DestroyCaptureEngine\n");
 			DestroyCaptureEngine();
-			/*SetErrorID(hrStatus, IDS_ERR_CAPTURE);*/
+			//SetErrorID(hrStatus, IDS_ERR_CAPTURE);
 
 			delete g_pEngine;
 			g_pEngine = NULL;
@@ -715,7 +692,6 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 			Sleep(5000);
 
 			//capture again
-			errorFlag = true;
 			PostMessage(initWindow, WM_COMMAND, ID_CAPTURE_FRAME, 0L);
 			SUCCEEDED(hrStatus);
 		}
@@ -762,135 +738,62 @@ void CaptureManager::OnRecordStopped(HRESULT& hrStatus)
 
 HRESULT CaptureManager::StartPreview(bool capture_photo)
 {
-	initOnSampleVariables();
-
 	if (m_pEngine == NULL)
-	{
 		return MF_E_NOT_INITIALIZED;
-	}
 
 	if (m_bPreviewing == true)
-	{
 		return S_OK;
-	}
 
 	IMFCaptureSink *pSink = NULL;
-	IMFCaptureRecordSink *pRecord = NULL;
-	IMFCapturePhotoSink *pPhoto = NULL;
+	
 	IMFMediaType *pMediaType = NULL;
 	IMFMediaType *pMediaType2 = NULL;
 	IMFCaptureSource *pSource = NULL;
 	DWORD dwSinkStreamIndex;
 	HRESULT hr = S_OK;
-	GUID subType;
-	UINT32 uiNumerator, uiDenominator, uiFps;
+
+	// Initiallize all global variables
+	initOnSampleVariables();
 
 	// Get a pointer to the preview sink.
-	if (m_pPreview == NULL)
+	if (m_pPreview == NULL || m_pRecord == NULL || m_pPhoto==NULL)
 	{
-		switch (g_pin_no)
-		{
-		case 1://record
-			hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_RECORD, &pSink);
-			printf("Select record pin\n");
-			break;
-		case 2://still
-			hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_PHOTO, &pSink);
-			printf("Select still pin\n");
-			break;
-		case 0://preview
-		default:
-			hr = m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_PREVIEW, &pSink);
-			printf("Select preview pin\n");
-			break;
-		}
+		// Get video source
+		if (FAILED(m_pEngine->GetSource(&pSource))) goto done;
 
-		if (FAILED(hr))
-		{
-			printf("m_pEngine->GetSink error\n");
-			goto done;
-		}
-
-		switch (g_pin_no)
-		{
-		case 1://record
-			hr = pSink->QueryInterface(IID_PPV_ARGS(&pRecord));
-			printf("query record pin\n");
-			break;
-		case 2://still
-			hr = pSink->QueryInterface(IID_PPV_ARGS(&pPhoto));
-			printf("query still pin\n");
-			break;
-		case 0://preview
-		default:
-			hr = pSink->QueryInterface(IID_PPV_ARGS(&m_pPreview));
-			printf("query preview pin\n");
-			break;
-		}
-
-		if (FAILED(hr))
-		{
-			printf("pSink->QueryInterface error\n");
-			goto done;
-		}
-
-		/*hr = m_pPreview->SetRenderHandle(m_hwndPreview);
-		if (FAILED(hr))
-		{
-			goto done;
-		}*/
-
-		hr = m_pEngine->GetSource(&pSource);
-		if (FAILED(hr))
-		{
-			printf("m_pEngine->GetSource error\n");
-			goto done;
-		}
-
-		
-		int count = 0;
+		// Query suppported resolution
+		int myCount = 0;
 		HRESULT nativeTypeErrorCode = S_OK;
-		int streamIndex = 0;
-		//query suppported resolution
+		int myStreamIndex = 0;
 		while (nativeTypeErrorCode == S_OK) {
-			nativeTypeErrorCode = pSource->GetAvailableDeviceMediaType(streamIndex, count, &pMediaType);
+			nativeTypeErrorCode = pSource->GetAvailableDeviceMediaType(myStreamIndex, myCount, &pMediaType);
 			if (nativeTypeErrorCode == MF_E_NO_MORE_TYPES)
 				break;
-			UINT32 m1_width, m1_height;
-			hr = MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &m1_width, &m1_height);
-			if (FAILED(hr))
-			{
-				printf("MFGetAttributeSize error\n");
-				goto done;
-			}
 
-			//hr = MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &m1_width, &m1_height);
+			UINT32 tmp_width, tmp_height;
 			UINT32 numeratorFrameRate, denominatorFrameRate;
-			hr = MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &numeratorFrameRate, &denominatorFrameRate);
-			if (FAILED(hr))
-			{
-				printf("MFGetAttributeRatio error\n");
-				goto done;
-			}
 
-			printf("[Supported resolution %d] (W*H)=%d*%d, %d FPS\n", count, m1_width, m1_height, numeratorFrameRate/denominatorFrameRate);
-			count++;
+			// Get current resolution and frame rate
+			if (FAILED(MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &tmp_width, &tmp_height))) goto done;
+			if (FAILED(MFGetAttributeRatio(pMediaType, MF_MT_FRAME_RATE, &numeratorFrameRate, &denominatorFrameRate))) goto done;
+			printf("[Supported resolution %d] (W*H)=%d*%d, %d FPS\n", myCount, tmp_width, tmp_height, numeratorFrameRate / denominatorFrameRate);
+			myCount++;
 		}
 
-		if (g_resolutionIndex >= count) {
+		// Check user selected resolution is valid or not
+		if (g_resolutionIndex >= myCount) {
 			g_resolutionIndex = 0;
-			printf("wrong resolution index, and set it to default\n");
+			printf("Wrong resolution index, and set it to default\n");
 		}
-		
+
 		//select resolution
-		int myRes = pSource->GetAvailableDeviceMediaType(streamIndex, g_resolutionIndex, &pMediaType);
+		int myRes = pSource->GetAvailableDeviceMediaType(myStreamIndex, g_resolutionIndex, &pMediaType);
 		if (myRes != S_OK) {
-			printf("fail to GetAvailableDeviceMediaType\n");
+			printf("Fail to GetAvailableDeviceMediaType\n");
 			goto done;
 		}
 
-		//get media source and kscontrol
-		bool *isMirrored = false;
+		// Get media source and kscontrol, and query meta data
 		IKsControl *ksControl = NULL;
 		IMFMediaSource *mediaSource = NULL;
 		hr = pSource->GetCaptureDeviceSource(MF_CAPTURE_ENGINE_DEVICE_TYPE_VIDEO, &mediaSource);
@@ -912,7 +815,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			myheader.Flags = KSSTREAM_HEADER_OPTIONSF_METADATA;
 
 			/*myheader.Version = 1;
-			myheader.PinId = KSCAMERA_EXTENDEDPROP_FILTERSCOPE; 
+			myheader.PinId = KSCAMERA_EXTENDEDPROP_FILTERSCOPE;
 			myheader.Size = sizeof(KSCAMERA_EXTENDEDPROP_HEADER) + sizeof(KSCAMERA_EXTENDEDPROP_VIDEOPROCSETTING);
 			//myheader.Capability = KSCAMERA_EXTENDEDPROP_FACEAUTH_MODE_ALTERNATIVE_FRAME_ILLUMINATION;
 			myheader.Flags = KSCAMERA_EXTENDEDPROP_FACEAUTH_MODE_ALTERNATIVE_FRAME_ILLUMINATION;
@@ -921,62 +824,11 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			hr = ksControl->KsProperty((PKSPROPERTY)&myProperty, sizeof(myProperty), &myheader, sizeof(myheader), &bytesReturned);
 			if (SUCCEEDED(hr))
 			{
-				// Fail if mirroring isn't supported on this device 
-				/*if ((capsR.VideoControlCaps & KS_VideoControlFlag_FlipHorizontal) == 0)
-				{
-					hr = HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
-					printf("not support this property\n");
-				}*/
-				printf("get value %d", myheader.Flags);
+				printf("Current flag is: %x\n", myheader.Flags);
 			}
 			else {
-				printf("********fail to get KsProperty********** %x\n", hr);
+				printf("Fail to get KsProperty with error code: %x\n", hr);
 			}
-		}
-		// Query the current mirroring state from the device
-		if (SUCCEEDED(hr))
-		{
-			printf("Query the current mirroring state from the device\n");
-			KSPROPERTY_VIDEOCONTROL_MODE_S mode = { 0 };
-
-			mode.Property.Set = PROPSETID_VIDCAP_VIDEOCONTROL;
-			mode.Property.Id = KSPROPERTY_VIDEOCONTROL_MODE;
-			mode.Property.Flags = KSPROPERTY_TYPE_GET;
-			mode.StreamIndex = streamIndex;
-			mode.Mode = 0;
-
-			ULONG bytesReturned = 0;
-			hr = ksControl->KsProperty((PKSPROPERTY)&mode, sizeof(mode), &mode, sizeof(mode), &bytesReturned);
-			if (SUCCEEDED(hr))
-			{
-				*isMirrored = (mode.Mode & KS_VideoControlFlag_FlipHorizontal) != 0;
-			}
-		}
-
-		//printf("isMirrored: %d\n", *isMirrored);
-
-		// Configure the video format for the preview sink.
-		switch (g_pin_no)
-		{
-		case 1://record
-			hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_RECORD, &pMediaType);
-			printf("Get record pin\n");
-			break;
-		case 2://still
-			hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_PHOTO, &pMediaType);
-			printf("Get still pin\n");
-			break;
-		case 0://preview
-		default:
-			hr = pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, &pMediaType);
-			printf("Get preview pin\n");
-			break;
-		}
-		
-		if (FAILED(hr))
-		{
-			printf("pSource->GetCurrentDeviceMediaType error\n");
-			goto done;
 		}
 
 		// Keep the format of YUY2 (MEDIASUBTYPE_YUY2)
@@ -988,116 +840,59 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		}
 
 		// Print current media type
+		GUID subType;
 		pMediaType2->GetGUID(MF_MT_SUBTYPE, &subType);
 		printf("[Format] GUID: %08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X\n",
 			subType.Data1, subType.Data2, subType.Data3,
 			subType.Data4[0], subType.Data4[1], subType.Data4[2], subType.Data4[3],
 			subType.Data4[4], subType.Data4[5], subType.Data4[6], subType.Data4[7]);
 
-		hr = MFGetAttributeRatio(pMediaType2, MF_MT_FRAME_RATE, &uiNumerator, &uiDenominator);
-		if (FAILED(hr))
-		{
-			printf("MFGetAttributeRatio error \n");
-			goto done;
-		}
-		uiFps = uiNumerator / uiDenominator;
-		printf("[Format] frame rate = %d \n", uiFps);
+		// Check resolution and frame rate again
+		UINT32 uiNumerator, uiDenominator;
+		if (FAILED(MFGetAttributeRatio(pMediaType2, MF_MT_FRAME_RATE, &uiNumerator, &uiDenominator))) goto done;
+		if (FAILED(MFGetAttributeSize(pMediaType2, MF_MT_FRAME_SIZE, &g_Width, &g_Height))) goto done;
+		printf("[Format] frame rate = %d \n", uiNumerator / uiDenominator);
+		printf("[Format] width = %d, Height = %d\n", g_Width, g_Height);
 
-		/*hr = MFSetAttributeSize(pMediaType2, MF_MT_FRAME_SIZE, 1920, 1080);
-		if (FAILED(hr))
-		{
-			printf("fail to set 1080p\n");
-			goto done;
-		}*/
+		if (FAILED(pMediaType2->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE))) goto done;
 
-		UINT32 uiWidth, uiHeight;
-		hr = MFGetAttributeSize(pMediaType2, MF_MT_FRAME_SIZE, &uiWidth, &uiHeight);
-		if (FAILED(hr))
-		{
-			printf("MFGetAttributeSize error\n");
-			goto done;
-		}
-		printf("[Format] width = %d, Height = %d\n", uiWidth, uiHeight);
-		g_Width = uiWidth;
-		g_Height = uiHeight;
-
-		hr = pMediaType2->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-		if (FAILED(hr))
-		{
-			printf("pMediaType2->SetUINT32 error\n");
-			goto done;
-		}
-
+		// Get a pointer to the preview sink.
+		// Configure the video format for the preview sink.
 		// Connect the video stream to the preview sink.
-
-		switch (g_pin_no)
-		{
-		case 1://record
-			hr = pRecord->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_RECORD, pMediaType2, NULL, &dwSinkStreamIndex);
-			printf("Add record pin\n");
-			break;
-		case 2://still
-			hr = pPhoto->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_PHOTO, pMediaType2, NULL, &dwSinkStreamIndex);
-			printf("Add still pin\n");
-			break;
-		case 0://preview
-		default:
-			hr = m_pPreview->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, pMediaType2, NULL, &dwSinkStreamIndex);
-			printf("Add preview pin\n");
-			break;
-		}
-		if (FAILED(hr))
-		{
-			printf("select pin error\n");
-			goto done;
-		}
-
 		// Set callback of sink
 		switch (g_pin_no)
 		{
 		case 1://record
-			hr = pRecord->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback);
-			printf("SetSampleCallback record pin\n");
+			printf("Select record pin\n");
+			if (FAILED(m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_RECORD, &pSink))) goto done;
+			if (FAILED(pSink->QueryInterface(IID_PPV_ARGS(&m_pRecord)))) goto done;
+			// Use selected resolution instead of MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_RECORD media type
+			//if (FAILED(pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_RECORD, &pMediaType))) goto done;
+			if (FAILED(m_pRecord->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_RECORD, pMediaType2, NULL, &dwSinkStreamIndex))) goto done;
+			if (FAILED(m_pRecord->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback))) goto done;
+			if (FAILED(m_pEngine->StartRecord())) goto done;
 			break;
 		case 2://still
-			hr = pPhoto->SetSampleCallback(m_pSampleCallback);
-			printf("SetSampleCallback still pin\n");
+			printf("Select still pin\n");
+			if (FAILED(m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_PHOTO, &pSink))) goto done;
+			if (FAILED(pSink->QueryInterface(IID_PPV_ARGS(&m_pPhoto)))) goto done;
+			//Use selected resolution instead of MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_PHOTO media type
+			//if (FAILED(pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_PHOTO, &pMediaType))) goto done;
+			if (FAILED(m_pPhoto->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_PHOTO, pMediaType2, NULL, &dwSinkStreamIndex))) goto done;
+			if (FAILED(m_pPhoto->SetSampleCallback(m_pSampleCallback))) goto done;
+			if (FAILED(m_pEngine->TakePhoto())) goto done;
 			break;
 		case 0://preview
 		default:
-			hr = m_pPreview->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback);
-			printf("SetSampleCallback preview pin\n");
+			printf("Select preview pin\n");
+			if (FAILED(m_pEngine->GetSink(MF_CAPTURE_ENGINE_SINK_TYPE_PREVIEW, &pSink))) goto done;
+			if (FAILED(pSink->QueryInterface(IID_PPV_ARGS(&m_pPreview)))) goto done;
+			//Use selected resolution instead of MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW media type
+			//if (FAILED(pSource->GetCurrentDeviceMediaType((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, &pMediaType))) goto done;
+			if (FAILED(m_pPreview->AddStream((DWORD)MF_CAPTURE_ENGINE_PREFERRED_SOURCE_STREAM_FOR_VIDEO_PREVIEW, pMediaType2, NULL, &dwSinkStreamIndex))) goto done;
+			if (FAILED(m_pPreview->SetSampleCallback(dwSinkStreamIndex, m_pSampleCallback))) goto done;
+			if (FAILED(m_pEngine->StartPreview())) goto done;
 			break;
-		}
-
-		if (FAILED(hr))
-		{
-			printf("m_pPreview->SetSampleCallback error\n");
-			goto done;
-		}
-
-		//
-		switch (g_pin_no)
-		{
-		case 1://record
-			hr = m_pEngine->StartRecord();
-			printf("StartRecord\n");
-			break;
-		case 2://still
-			hr = m_pEngine->TakePhoto();
-			printf("TakePhoto\n");
-			break;
-		case 0://preview
-		default:
-			hr = m_pEngine->StartPreview();
-			printf("StartPreview\n");
-			break;
-		}
-
-		if (FAILED(hr))
-		{
-			printf("m_pEngine->StartPreview error\n");
-			goto done;
 		}
 	}
 
