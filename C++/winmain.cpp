@@ -18,9 +18,9 @@
 #include <string>
 
 int g_threshold, g_op_mode, g_countToCapture, g_device_type, g_select_no, g_resolutionIndex, g_pin_no;
-int g_frame_rate;
+int g_sum=0, g_validNum=0;
 
-WCHAR *g_toolVersion = L"version: 20170601";
+WCHAR *g_toolVersion = L"version: 20170603";
 FILE *file_log;
 HWND initWindow;
 
@@ -879,6 +879,8 @@ namespace MainWindow
 		case ID_SET_FRAME_RATE:
 		{
 			//printf("set frame rate\n");
+			int g_frame_rate = 1000 / (g_sum / g_validNum);
+			printf("validNum %d, FPS %d\n", g_validNum, g_frame_rate);
 			WCHAR titleName[100] = L"[IR Test Tool] ";
 			wcscat(titleName, g_toolVersion);
 

@@ -21,7 +21,7 @@ HWND g_hwndPreviewCopy;
 
 //extern parameters define in winmain.cpp
 extern int g_threshold, g_op_mode, g_countToCapture, g_device_type, g_resolutionIndex, g_pin_no;
-extern int g_frame_rate;
+extern int g_sum, g_validNum;
 extern WCHAR *g_toolVersion;
 extern FILE *file_log;
 extern CaptureManager *g_pEngine;
@@ -136,6 +136,7 @@ int evalueCount, BrightCount, skipFrame, frame_index;
 int evalueArr[128];
 int timestampCounter;
 int timestampDiff[256] = { 0 };
+int sum, validNum;
 bool  g_Capture_photo = FALSE;
 UINT32 g_Width, g_Height;
 LONGLONG firstTimeStamp;
@@ -146,12 +147,15 @@ BYTE *g_light_pbInputData = NULL;
 DWORD average_sum[2] = { 0 };
 DWORD g_light_dwMaxLength = 0;
 
+
 void initOnSampleVariables() {
 	evalueCount = 0;
 	BrightCount = -1;
 	skipFrame = (g_pin_no==2)?2:30;
 	frame_index = 0;
 	timestampCounter = 0;
+	sum = 0;
+	validNum = 0;
 	memset(timestampDiff, 0, sizeof(int) * 256);
 	memset(average_sum, 0, sizeof(LONGLONG)*2);
 	firstTimeStamp = 0;
@@ -160,9 +164,9 @@ void initOnSampleVariables() {
 
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
-	IMFAttributes *pSourceAttributes = NULL;
+	/*IMFAttributes *pSourceAttributes = NULL;
 	int ret = pSample->GetUnknown(MFSampleExtension_CaptureMetadata, IID_PPV_ARGS(&pSourceAttributes));
-	/*switch (ret)
+	switch (ret)
 	{
 	case S_OK:
 	{
@@ -222,24 +226,24 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		firstTimeStamp = preTimeStamp = tickCount;
 
 	//cache frame rate
-	timestampDiff[timestampCounter++] = (tickCount - preTimeStamp != 0) ? (tickCount - preTimeStamp) : 0;
+	timestampDiff[timestampCounter] = (tickCount - preTimeStamp != 0) ? (tickCount - preTimeStamp) : 0;
+	if (timestampDiff[timestampCounter] != 0) {
+		sum += timestampDiff[timestampCounter];
+		validNum++;
+	}
+	timestampCounter++;
 
 	//display every one second
 	if (tickCount - firstTimeStamp >= 1000) {
-		int sum = 0;
-		int validNum = 0;
-		for (int i = 0; i < timestampCounter; i++) {
-			if (timestampDiff[i] != 0) {
-				sum += timestampDiff[i];
-				validNum++;
-			}
-		}
-		sum /= validNum;
-		g_frame_rate = 1000 / sum;
-		//printf("timestampCounter %d, validNum %d, FPS %d\n", timestampCounter, validNum, g_frame_rate);
+		//pass parameters to main function
+		g_sum = sum;
+		g_validNum = validNum;
 
+		//reset parameters
 		timestampCounter = 0;
 		firstTimeStamp = tickCount;
+		sum = 0;
+		validNum = 0;
 		
 		//update FPS to UI
 		PostMessage(initWindow, WM_COMMAND, ID_SET_FRAME_RATE, 0L); //update FPS to UI
@@ -794,7 +798,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		}
 
 		// Get media source and kscontrol, and query meta data
-		IKsControl *ksControl = NULL;
+		/*IKsControl *ksControl = NULL;
 		IMFMediaSource *mediaSource = NULL;
 		hr = pSource->GetCaptureDeviceSource(MF_CAPTURE_ENGINE_DEVICE_TYPE_VIDEO, &mediaSource);
 		if (SUCCEEDED(hr)) {
@@ -819,7 +823,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			myheader.Size = sizeof(KSCAMERA_EXTENDEDPROP_HEADER) + sizeof(KSCAMERA_EXTENDEDPROP_VIDEOPROCSETTING);
 			//myheader.Capability = KSCAMERA_EXTENDEDPROP_FACEAUTH_MODE_ALTERNATIVE_FRAME_ILLUMINATION;
 			myheader.Flags = KSCAMERA_EXTENDEDPROP_FACEAUTH_MODE_ALTERNATIVE_FRAME_ILLUMINATION;
-			*/
+			
 			DWORD bytesReturned = 0;
 			hr = ksControl->KsProperty((PKSPROPERTY)&myProperty, sizeof(myProperty), &myheader, sizeof(myheader), &bytesReturned);
 			if (SUCCEEDED(hr))
@@ -829,7 +833,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			else {
 				printf("Fail to get KsProperty with error code: %x\n", hr);
 			}
-		}
+		}*/
 
 		// Keep the format of YUY2 (MEDIASUBTYPE_YUY2)
 		hr = CloneVideoMediaType(pMediaType, MFVideoFormat_RGB24, &pMediaType2);
