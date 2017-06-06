@@ -674,7 +674,7 @@ HRESULT CaptureManager::OnCaptureEvent(WPARAM wParam, LPARAM lParam)
 		}
 		else if (guidType == MF_CAPTURE_ENGINE_ERROR)
 		{
-			printf("DestroyCaptureEngine\n");
+			printf("DestroyCaptureEngine %x\n", hrStatus);
 			DestroyCaptureEngine();
 			//SetErrorID(hrStatus, IDS_ERR_CAPTURE);
 
@@ -786,6 +786,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			printf("Wrong resolution index, and set it to default\n");
 		}
 
+		printf("g_resolutionIndex = %d\n", g_resolutionIndex);
 		//select resolution
 		int myRes = pSource->GetAvailableDeviceMediaType(myStreamIndex, g_resolutionIndex, &pMediaType);
 		if (myRes != S_OK) {
@@ -793,6 +794,13 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 			goto done;
 		}
 
+		printf("SetCurrentDeviceMediaType\n");
+		//select resolution
+		hr = pSource->SetCurrentDeviceMediaType(myStreamIndex, pMediaType);
+		if (hr != S_OK) {
+			printf("Fail to SetCurrentDeviceMediaType\n");
+			goto done;
+		}
 		// Get media source and kscontrol, and query meta data
 		IKsControl *ksControl = NULL;
 		IMFMediaSource *mediaSource = NULL;
@@ -830,6 +838,12 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 				printf("Fail to get KsProperty with error code: %x\n", hr);
 			}
 		}
+		GUID subType;
+		pMediaType->GetGUID(MF_MT_SUBTYPE, &subType);
+		printf("[Select Format] GUID: %08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X\n",
+			subType.Data1, subType.Data2, subType.Data3,
+			subType.Data4[0], subType.Data4[1], subType.Data4[2], subType.Data4[3],
+			subType.Data4[4], subType.Data4[5], subType.Data4[6], subType.Data4[7]);
 
 		// Keep the format of YUY2 (MEDIASUBTYPE_YUY2)
 		hr = CloneVideoMediaType(pMediaType, MFVideoFormat_RGB24, &pMediaType2);
@@ -840,7 +854,7 @@ HRESULT CaptureManager::StartPreview(bool capture_photo)
 		}
 
 		// Print current media type
-		GUID subType;
+		//GUID subType;
 		pMediaType2->GetGUID(MF_MT_SUBTYPE, &subType);
 		printf("[Format] GUID: %08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X\n",
 			subType.Data1, subType.Data2, subType.Data3,

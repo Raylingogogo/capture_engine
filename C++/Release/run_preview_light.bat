@@ -1,1 +1,1 @@
-CaptureEngine.exe 50 2 -1 0 0 0 0
+CaptureEngine.exe 50 2 -1 0 0 1 0
