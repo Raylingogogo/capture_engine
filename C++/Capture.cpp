@@ -13,6 +13,10 @@
 #include <ksproxy.h>
 #include <string>
 
+
+#define USE_ILLUMINATE_FLAG		1
+
+
 IMFDXGIDeviceManager* g_pDXGIMan = NULL;
 ID3D11Device*         g_pDX11Device = NULL;
 UINT                  g_ResetToken = 0;
@@ -134,6 +138,7 @@ STDMETHODIMP_(ULONG) CaptureManager::CaptureEngineSampleCB::Release()
 // Parameters in onSample
 int evalueCount, BrightCount, skipFrame, frame_index;
 int evalueArr[128];
+BYTE toggleArr[128];
 int timestampCounter;
 int timestampDiff[256] = { 0 };
 int sum, validNum;
@@ -164,30 +169,31 @@ void initOnSampleVariables() {
 
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
-	/*IMFAttributes *pSourceAttributes = NULL;
+	UINT64 illuminationEnabled;
+	IMFAttributes *pSourceAttributes = NULL;
 	int ret = pSample->GetUnknown(MFSampleExtension_CaptureMetadata, IID_PPV_ARGS(&pSourceAttributes));
 	switch (ret)
 	{
-	case S_OK:
-	{
-		UINT64 illuminationEnabled;
-		pSourceAttributes->GetUINT64(MF_CAPTURE_METADATA_FRAME_ILLUMINATION, &illuminationEnabled);
-		printf("%s\n", illuminationEnabled ? "light" : "dark");
-		break;
+		case S_OK:
+		{			
+			pSourceAttributes->GetUINT64(MF_CAPTURE_METADATA_FRAME_ILLUMINATION, &illuminationEnabled);
+			if (evalueCount < skipFrame)
+				printf("%s\n", illuminationEnabled ? "light" : "dark");
+			break;
+		}
+		case E_NOINTERFACE:
+			printf("E_NOINTERFACE\n");
+			break;
+		case MF_E_ATTRIBUTENOTFOUND:
+			printf("MF_E_ATTRIBUTENOTFOUND\n");
+			break;
+		case MF_E_INVALIDTYPE:
+			printf("MF_E_INVALIDTYPE\n");
+			break;
+		default:
+			printf("undefine message\n");
+			break;
 	}
-	case E_NOINTERFACE:
-		printf("E_NOINTERFACE\n");
-		break;
-	case MF_E_ATTRIBUTENOTFOUND:
-		printf("MF_E_ATTRIBUTENOTFOUND\n");
-		break;
-	case MF_E_INVALIDTYPE:
-		printf("MF_E_INVALIDTYPE\n");
-		break;
-	default:
-		printf("undefine message\n");
-		break;
-	}*/
 
 	// Start capture, if our count is equal to the countdown of capture
 	if (evalueCount==g_countToCapture && g_countToCapture!=-1) {
@@ -261,9 +267,13 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	if (BrightCount != -1) {
 		if (g_Capture_photo) {//allow to capture
 
+#if USE_ILLUMINATE_FLAG
+			if ((frame_index == 0 && (illuminationEnabled == true)) ||//light one
+				frame_index == 1) {//next one
+#else
 			if ((frame_index == 0 && (evalueCount%2 == BrightCount))      ||//light one
 				 frame_index == 1 ) {//next one
-				 
+#endif				 
 				printf("frame index %d, this evalue Count %d, BrightCount %d, avg %d\n", frame_index, evalueCount, BrightCount, average_sum[frame_index]);
 
 				//swap up and down
@@ -305,7 +315,11 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				setlocale(LC_ALL, "en_US.UTF-8");
 				HANDLE file;
 				DWORD write = 0;
+#if USE_ILLUMINATE_FLAG
+				if (illuminationEnabled == 1)
+#else
 				if (frame_index == 0)
+#endif
 					file = CreateFile(L"light.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
 				else
 					file = CreateFile(L"dark.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
@@ -386,14 +400,22 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				break;
 			case 2:
 				if (BrightCount != -1) {
+#if USE_ILLUMINATE_FLAG
+					if (illuminationEnabled == 1) { //display light one
+#else
 					if (evalueCount % 2 == BrightCount) { //display light one
+#endif
 						RedrawWindow(g_hwndPreviewCopy, NULL, NULL, RDW_INTERNALPAINT | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 					}
 				}
 				break;
 			case 3:
 				if (BrightCount != -1) {
+#if USE_ILLUMINATE_FLAG
+					if (illuminationEnabled == 0) { //display dark one
+#else
 					if (evalueCount % 2 == ((BrightCount + 1)%2)) { //display dark one
+#endif
 						RedrawWindow(g_hwndPreviewCopy, NULL, NULL, RDW_INTERNALPAINT | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 					}
 				}
@@ -406,12 +428,15 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 
 	//add avg to evaluation array
 	if (evalueCount < skipFrame)
+	{
 		evalueArr[evalueCount] = average_sum[frame_index];
-
+		toggleArr[evalueCount] = (BYTE)illuminationEnabled;
+	}
 	//judge the light or dark
 	if (evalueCount == skipFrame-1) {
 		printf("prepare rendering ok\n");
 		int oddSum=0, evenSum=0;
+		int toggle_failed = 0;
 		for (int i = 0; i <= evalueCount; i++) {
 			//printf("i %d, avg %d\n", i, evalueArr[i]);
 			if (i % 2 == 1) {
@@ -420,7 +445,15 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 			else {
 				evenSum += evalueArr[i];
 			}
-
+#if USE_ILLUMINATE_FLAG
+			if (i > 0)
+			{
+				if (toggleArr[i] == toggleArr[i-1])
+				{
+					toggle_failed++;					
+				}
+			}
+#endif
 			if (i == evalueCount) { // last one
 				BrightCount = (oddSum > evenSum) ? 1 : 0;
 				//printf("brightCount==%d\n",BrightCount);
@@ -433,6 +466,15 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				g_BitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 				g_BitmapInfo.bmiHeader.biSizeImage = g_Width * g_Height * (24 / 8);;
 				g_BitmapInfo.bmiHeader.biCompression = BI_RGB;
+#if USE_ILLUMINATE_FLAG
+				if (toggle_failed >= 3)
+				{
+					printf("Toggle failed. times = %d\n", toggle_failed);
+					ShowError (NULL, L"Metadata illuminated flags are NOT toggling corretly (at least 3 times). \nFace Authentication mode is probably NOT turned on.\nPlease retry it !!", toggle_failed);
+					g_pEngine->StopPreview();
+					exit(0);					
+				}
+#endif
 			}
 		}
 	}
