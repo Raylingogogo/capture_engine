@@ -275,7 +275,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				 frame_index == 1 ) {//next one
 #endif				 
 				printf("frame index %d, this evalue Count %d, BrightCount %d, avg %d\n", frame_index, evalueCount, BrightCount, average_sum[frame_index]);
-
+#if 0 // after change bitmap height to negative, don't have to swap now. It starts from left/top corner
 				//swap up and down
 				for (DWORD i = 0; i < dwMaxLength / 2; i += 3) {
 					BYTE tmpR, tmpG, tmpB;
@@ -304,7 +304,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 						pbInputData[(i*g_Width + g_Width - j) * 3 - 1] = tmpB;
 					}
 				}
-
+#endif
 				if (frame_index == 0) {
 					g_light_dwMaxLength = dwMaxLength;
 					g_light_pbInputData = (BYTE*)calloc(g_light_dwMaxLength, sizeof(BYTE));
@@ -461,13 +461,15 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				ZeroMemory(&g_BitmapInfo, sizeof(BITMAPINFO));
 				g_BitmapInfo.bmiHeader.biBitCount = 24;
 				g_BitmapInfo.bmiHeader.biWidth = g_Width;
-				g_BitmapInfo.bmiHeader.biHeight = g_Height;
+				//if the height is a negative value, it is a top-down DIB. https://msdn.microsoft.com/en-us/library/windows/desktop/dd183562(v=vs.85).aspx
+				g_BitmapInfo.bmiHeader.biHeight = -g_Height; 
 				g_BitmapInfo.bmiHeader.biPlanes = 1;
 				g_BitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
 				g_BitmapInfo.bmiHeader.biSizeImage = g_Width * g_Height * (24 / 8);;
 				g_BitmapInfo.bmiHeader.biCompression = BI_RGB;
 #if USE_ILLUMINATE_FLAG
-				if (toggle_failed >= 3)
+				if (toggle_failed >= 3 &&
+					g_device_type == 0 /* Check when IR Camera */)
 				{
 					printf("Toggle failed. times = %d\n", toggle_failed);
 					ShowError (NULL, L"Metadata illuminated flags are NOT toggling corretly (at least 3 times). \nFace Authentication mode is probably NOT turned on.\nPlease retry it !!", toggle_failed);
@@ -1423,7 +1425,7 @@ done:
 
 HRESULT CaptureManager::UpdateVideo(HDC hdc)
 {
-	int rv = StretchDIBits(hdc, g_Width, g_Height, -g_Width, -g_Height, 0, 0, g_Width, g_Height,
+	int rv = StretchDIBits(hdc, 0, 0, g_Width, g_Height, 0, 0, g_Width, g_Height,
 		g_pbInputData, &g_BitmapInfo,
 		DIB_RGB_COLORS, SRCCOPY);
 	if (rv == 0) {

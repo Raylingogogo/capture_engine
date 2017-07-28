@@ -20,9 +20,14 @@
 int g_threshold, g_op_mode, g_countToCapture, g_device_type, g_select_no, g_resolutionIndex, g_pin_no;
 int g_sum=0, g_validNum=0;
 
-WCHAR *g_toolVersion = L"version: 20170718";
+WCHAR *g_toolVersion = L"version: 20170727";
 FILE *file_log;
 HWND initWindow;
+
+#define DEFAULT_WIN_POS_X	200
+#define DEFAULT_WIN_POS_Y	100
+#define DEFAULT_WIN_WIDTH	500
+#define DEFAULT_WIN_HEIGHT	500
 
 // Main function for the console
 int main(int argc, char **argv) {
@@ -298,7 +303,7 @@ namespace MainWindow
 	bool bPreviewing = false;
 	IMFActivate* pSelectedDevice = NULL;
 	static bool capture_photo = 0;
-
+	int x_diff = 0, y_diff = 0;
 	wchar_t PhotoFileName[MAX_PATH];
 
 	inline void _SetStatusText(const WCHAR *szStatus)
@@ -383,7 +388,7 @@ namespace MainWindow
 
 		//set window size and title
 		SetWindowText(hwnd, titleName);
-		SetWindowPos(hwnd, HWND_TOPMOST, 200, 100, 500, 500, SWP_NOZORDER);
+		SetWindowPos(hwnd, HWND_TOPMOST, DEFAULT_WIN_POS_X, DEFAULT_WIN_POS_Y, DEFAULT_WIN_WIDTH, DEFAULT_WIN_HEIGHT, SWP_NOZORDER);
 
 		hPreview = CreatePreviewWindow(GetModuleHandle(NULL), hwnd);
 		if (hPreview == NULL)
@@ -459,6 +464,15 @@ namespace MainWindow
 
 	void OnSize(HWND /*hwnd*/, UINT state, int cx, int cy)
 	{
+		//Caculate the x, y diff (Declare Window x/y - real rectange x/y) at beginning. Will be used for adjust the window size
+		if (x_diff == 0 && y_diff == 0)
+		{
+			x_diff = DEFAULT_WIN_WIDTH - cx;
+			y_diff = DEFAULT_WIN_HEIGHT - cy;
+			printf("OnSize = %d %d, ", cx, cy);
+			printf("diff = %d %d\n", x_diff, y_diff);
+		}
+
 		if (state == SIZE_RESTORED || state == SIZE_MAXIMIZED)
 		{
 			// Resize the status bar.
@@ -759,6 +773,22 @@ namespace MainWindow
 
 			ShowError(hwnd, IDS_ERR_RECORD, hr);
 		}
+
+		RECT statusRect;
+		SendMessageW(hStatus, SB_GETRECT, 0, (LPARAM)&statusRect);
+		
+		/* Caculate new window size (cx, cy): streaming resolution added the x/y diff (previously saved) & satus bar */
+		int cx = g_Width + x_diff;
+		int cy = g_Height + y_diff + (statusRect.bottom);
+		
+		/* get current window position */
+		RECT MainWinRect;
+		GetWindowRect(hwnd, (LPRECT)&MainWinRect);
+		printf("x = %d, y = %d, cx = %d, cy = %d\n", MainWinRect.left, MainWinRect.top, cx, cy);
+		
+		/* update the new windows size and original position*/
+		MoveWindow(hwnd, MainWinRect.left, MainWinRect.top, cx, cy, TRUE);
+		
 		UpdateUI(hwnd);
 
 	}
