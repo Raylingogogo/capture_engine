@@ -12,6 +12,7 @@
 #include <mfreadwrite.h>
 #include <ksproxy.h>
 #include <string>
+#include <Windows.h>
 
 
 #define USE_ILLUMINATE_FLAG		1
@@ -471,10 +472,12 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				if (toggle_failed >= 3 &&
 					g_device_type == 0 /* Check when IR Camera */)
 				{
-					printf("Toggle failed. times = %d\n", toggle_failed);
-					ShowError (NULL, L"Metadata illuminated flags are NOT toggling corretly (at least 3 times). \nFace Authentication mode is probably NOT turned on.\nPlease retry it !!", toggle_failed);
+					printf("Metadata illuminated flags are NOT toggling corretly (at least 3 times). \nFace Authentication mode is probably NOT turned on.\nPlease retry it !! (times = %d)\n", toggle_failed);
+					//Don¡¦t pop-out error UI Dialog
+					//ShowError (NULL, L"Metadata illuminated flags are NOT toggling corretly (at least 3 times). \nFace Authentication mode is probably NOT turned on.\nPlease retry it !!", toggle_failed);
+					Print_FileErrorLog(L"Metadata illuminated flags are NOT toggling corretly (Failed %d times). \nFace Authentication mode is probably NOT turned on.\nPlease retry it !!\n%", toggle_failed);
 					g_pEngine->StopPreview();
-					exit(0);					
+					exit(2);		//set Error Level as 2 (Retry) 			
 				}
 #endif
 			}

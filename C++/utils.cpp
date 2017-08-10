@@ -11,6 +11,8 @@
 #include "Capture.h"
 #include <wincodec.h>
 
+extern WCHAR *g_toolVersion;
+
 HRESULT CopyAttribute(IMFAttributes *pSrc, IMFAttributes *pDest, const GUID& key)
 {
     PROPVARIANT var;
@@ -173,4 +175,34 @@ VOID DbgPrint(PCTSTR format, ...)
     {
         DebugBreak();
     }
+}
+
+VOID Print_FileErrorLog(PCTSTR format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	SYSTEMTIME st;
+	GetLocalTime(&st);
+	FILE *error_log;
+	errno_t err;
+	_bstr_t b(g_toolVersion);
+	char *outputVersion = b;
+	TCHAR string[MAX_PATH];
+
+	if ((err = fopen_s(&error_log, "Error Log.txt", "a")) != 0)
+		printf("The error log file was not opened\n");
+
+	fprintf(error_log, "[ERROR %d-%02d-%02d %02d:%02d:%02d.%03d]\n", st.wYear,
+		st.wMonth,
+		st.wDay,
+		st.wHour,
+		st.wMinute,
+		st.wSecond,
+		st.wMilliseconds);
+	if (SUCCEEDED(StringCbVPrintf(string, sizeof(string), format, args)))
+	{
+		fwprintf(error_log, string, args);	}
+	
+	fprintf(error_log, "[End of Log, %s]\n\n", outputVersion);
+	fclose(error_log);
 }

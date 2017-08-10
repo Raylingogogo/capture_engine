@@ -57,6 +57,7 @@ extern UINT                  g_ResetToken;
 #endif
 
 VOID DbgPrint(PCTSTR format, ...);
+VOID Print_FileErrorLog(PCTSTR format, ...);
 
 
 template <class T> void SafeRelease(T **ppT)
