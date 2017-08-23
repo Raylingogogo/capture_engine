@@ -13,10 +13,12 @@
 #include <ksproxy.h>
 #include <string>
 #include <Windows.h>
+#include <tchar.h>
 
 
 #define USE_ILLUMINATE_FLAG		1
-
+#define USE_TIME_FILE_NAME		0
+#define ENABLE_CAPTURE_N_EXIT	1
 
 IMFDXGIDeviceManager* g_pDXGIMan = NULL;
 ID3D11Device*         g_pDX11Device = NULL;
@@ -152,7 +154,9 @@ BYTE *g_pbInputData = NULL;
 BYTE *g_light_pbInputData = NULL;
 DWORD average_sum[2] = { 0 };
 DWORD g_light_dwMaxLength = 0;
-
+TCHAR   fname_light[50];
+TCHAR   fname_dark[50];
+TCHAR   fname_diff[50];
 
 void initOnSampleVariables() {
 	evalueCount = 0;
@@ -171,6 +175,7 @@ void initOnSampleVariables() {
 HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 {
 	UINT64 illuminationEnabled;
+#if	USE_ILLUMINATE_FLAG
 	IMFAttributes *pSourceAttributes = NULL;
 	int ret = pSample->GetUnknown(MFSampleExtension_CaptureMetadata, IID_PPV_ARGS(&pSourceAttributes));
 	switch (ret)
@@ -195,6 +200,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 			printf("undefine message\n");
 			break;
 	}
+#endif	//USE_ILLUMINATE_FLAG
 
 	// Start capture, if our count is equal to the countdown of capture
 	if (evalueCount==g_countToCapture && g_countToCapture!=-1) {
@@ -268,6 +274,24 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	if (BrightCount != -1) {
 		if (g_Capture_photo) {//allow to capture
 
+#if USE_TIME_FILE_NAME
+			if (frame_index == 0)
+			{
+				SYSTEMTIME st;
+				GetLocalTime(&st);
+				_stprintf_s(fname_light, 50, _T("%d%02d%02d_%02d%02d%02d_light.bmp"), st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+				_stprintf_s(fname_dark, 50, _T("%d%02d%02d_%02d%02d%02d_dark.bmp"), st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+				_stprintf_s(fname_diff, 50, _T("%d%02d%02d_%02d%02d%02d_difference.bmp"), st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+			}
+#else
+			if (frame_index == 0)
+			{
+				_stprintf_s(fname_light, 50, _T("light.bmp"));
+				_stprintf_s(fname_dark, 50, _T("dark.bmp"));
+				_stprintf_s(fname_diff, 50, _T("difference.bmp"));
+			}
+#endif
+
 #if USE_ILLUMINATE_FLAG
 			if ((frame_index == 0 && (illuminationEnabled == true)) ||//light one
 				frame_index == 1) {//next one
@@ -321,10 +345,10 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 #else
 				if (frame_index == 0)
 #endif
-					file = CreateFile(L"light.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
+					file = CreateFile(fname_light, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
 				else
-					file = CreateFile(L"dark.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
-				
+					file = CreateFile(fname_dark, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to	
+
 				//write file headers and bitmap data to output
 				BITMAPFILEHEADER fileHeader;
 				BITMAPINFOHEADER fileInfo;
@@ -346,6 +370,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 
 				//write data to file
 				WriteFile(file, pbInputData, dwMaxLength, &write, NULL);
+				CloseHandle(file);
 
 				//Calculate and dump result to result.txt
 				if (frame_index == 1)
@@ -353,7 +378,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					int diff = abs((int)(average_sum[0] - average_sum[1]));
 					printf("frame 0 average = %d \n", average_sum[0]);
 					printf("frame 1 average = %d \n", average_sum[1]);
-					printf("Result = %d, %s", diff, diff > g_threshold ? "PASS" : "FAIL");
+					printf("Result = %d, %s\n", diff, diff > g_threshold ? "PASS" : "FAIL");
 
 					// Stream File open
 					if ((err = fopen_s(&file_log, "result.txt", "w+")) != 0)
@@ -371,7 +396,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					//save frame difference
 					HANDLE file2;
 					DWORD write2 = 0;
-					file2 = CreateFile(L"difference.bmp", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
+					file2 = CreateFile(fname_diff, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
 					WriteFile(file2, &fileHeader, sizeof(fileHeader), &write2, NULL);
 					WriteFile(file2, &fileInfo, sizeof(fileInfo), &write2, NULL);
 
@@ -380,13 +405,20 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 						g_light_pbInputData[i] = (g_light_pbInputData[i] > pbInputData[i]) ? g_light_pbInputData[i] - pbInputData[i] : 0;
 
 					WriteFile(file2, g_light_pbInputData, g_light_dwMaxLength, &write2, NULL);
+					CloseHandle(file2);
 
 					//release parameters
 					pSampleBuffer->Unlock();
 					pSampleBuffer->Release();
+#if ENABLE_CAPTURE_N_EXIT
 					g_pEngine->StopPreview();
-
 					exit(0);
+#else
+					g_Capture_photo = FALSE;
+					initOnSampleVariables();
+					return hr;
+#endif /*ENABLE_CAPTURE_N_EXIT*/
+
 				}
 				frame_index++;
 			}
