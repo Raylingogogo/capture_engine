@@ -157,6 +157,10 @@ DWORD g_light_dwMaxLength = 0;
 TCHAR   fname_light[50];
 TCHAR   fname_dark[50];
 TCHAR   fname_diff[50];
+HANDLE file_light;
+HANDLE file_dark;
+HANDLE file_diff;
+HANDLE file_to_write;
 
 void initOnSampleVariables() {
 	evalueCount = 0;
@@ -338,17 +342,25 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 
 				//set output file format
 				setlocale(LC_ALL, "en_US.UTF-8");
-				HANDLE file;
 				DWORD write = 0;
+
+				printf("frame_index = %d, illuminationEnabled = %d\n", (int) frame_index, (int)illuminationEnabled);
 #if USE_ILLUMINATE_FLAG
 				if (illuminationEnabled == 1)
 #else
 				if (frame_index == 0)
 #endif
-					file = CreateFile(fname_light, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
+				{					
+					printf("create light file: %ls\n", fname_light);
+					file_light = CreateFile(fname_light, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
+					file_to_write = file_light;
+				}
 				else
-					file = CreateFile(fname_dark, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to	
-
+				{
+					printf("create dark file: %ls\n", fname_dark);
+					file_dark = CreateFile(fname_dark, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
+					file_to_write = file_dark;
+				}
 				//write file headers and bitmap data to output
 				BITMAPFILEHEADER fileHeader;
 				BITMAPINFOHEADER fileInfo;
@@ -357,7 +369,8 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				fileHeader.bfReserved1 = 0;//sets the reserves to 0
 				fileHeader.bfReserved2 = 0;
 				fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);//Sets offbits equal to the size of file and info header
-				WriteFile(file, &fileHeader, sizeof(fileHeader), &write, NULL);
+
+				WriteFile(file_to_write, &fileHeader, sizeof(fileHeader), &write, NULL);
 
 				fileInfo = g_BitmapInfo.bmiHeader;
 				fileInfo.biXPelsPerMeter = 2400;
@@ -366,11 +379,11 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				fileInfo.biClrUsed = 0;
 
 				//write file information to file
-				WriteFile(file, &fileInfo, sizeof(fileInfo), &write, NULL);
+				WriteFile(file_to_write, &fileInfo, sizeof(fileInfo), &write, NULL);
 
 				//write data to file
-				WriteFile(file, pbInputData, dwMaxLength, &write, NULL);
-				CloseHandle(file);
+				WriteFile(file_to_write, pbInputData, dwMaxLength, &write, NULL);
+				
 
 				//Calculate and dump result to result.txt
 				if (frame_index == 1)
@@ -394,22 +407,28 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					fclose(file_log);
 
 					//save frame difference
-					HANDLE file2;
+					
 					DWORD write2 = 0;
-					file2 = CreateFile(fname_diff, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
-					WriteFile(file2, &fileHeader, sizeof(fileHeader), &write2, NULL);
-					WriteFile(file2, &fileInfo, sizeof(fileInfo), &write2, NULL);
+					printf("create diff file: %ls\n", fname_diff);
+					file_diff = CreateFile(fname_diff, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
+					WriteFile(file_diff, &fileHeader, sizeof(fileHeader), &write2, NULL);
+					WriteFile(file_diff, &fileInfo, sizeof(fileInfo), &write2, NULL);
 
 					//subtract
 					for (DWORD i = 0; i < g_light_dwMaxLength; i++) 
 						g_light_pbInputData[i] = (g_light_pbInputData[i] > pbInputData[i]) ? g_light_pbInputData[i] - pbInputData[i] : 0;
 
-					WriteFile(file2, g_light_pbInputData, g_light_dwMaxLength, &write2, NULL);
-					CloseHandle(file2);
+					WriteFile(file_diff, g_light_pbInputData, g_light_dwMaxLength, &write2, NULL);
+
+					CloseHandle(file_diff);
+					CloseHandle(file_light);
+					CloseHandle(file_dark);
 
 					//release parameters
 					pSampleBuffer->Unlock();
 					pSampleBuffer->Release();
+
+					
 #if ENABLE_CAPTURE_N_EXIT
 					g_pEngine->StopPreview();
 					exit(0);
