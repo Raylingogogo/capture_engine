@@ -157,9 +157,11 @@ DWORD g_light_dwMaxLength = 0;
 TCHAR   fname_light[50];
 TCHAR   fname_dark[50];
 TCHAR   fname_diff[50];
+TCHAR   fname_RGB[50];
 HANDLE file_light;
 HANDLE file_dark;
 HANDLE file_diff;
+HANDLE file_rgb;
 HANDLE file_to_write;
 
 void initOnSampleVariables() {
@@ -181,11 +183,13 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 	UINT64 illuminationEnabled;
 #if	USE_ILLUMINATE_FLAG
 	IMFAttributes *pSourceAttributes = NULL;
-	int ret = pSample->GetUnknown(MFSampleExtension_CaptureMetadata, IID_PPV_ARGS(&pSourceAttributes));
-	switch (ret)
+	if (g_device_type == 0) //IR Camera
 	{
+		int ret = pSample->GetUnknown(MFSampleExtension_CaptureMetadata, IID_PPV_ARGS(&pSourceAttributes));
+		switch (ret)
+		{
 		case S_OK:
-		{			
+		{
 			pSourceAttributes->GetUINT64(MF_CAPTURE_METADATA_FRAME_ILLUMINATION, &illuminationEnabled);
 			if (evalueCount < skipFrame)
 				printf("%s\n", illuminationEnabled ? "light" : "dark");
@@ -203,7 +207,10 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 		default:
 			printf("undefine message\n");
 			break;
+		}
 	}
+	else
+		illuminationEnabled = TRUE; //Assume RGB Camera always true
 #endif	//USE_ILLUMINATE_FLAG
 
 	// Start capture, if our count is equal to the countdown of capture
@@ -293,6 +300,7 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				_stprintf_s(fname_light, 50, _T("light.bmp"));
 				_stprintf_s(fname_dark, 50, _T("dark.bmp"));
 				_stprintf_s(fname_diff, 50, _T("difference.bmp"));
+				_stprintf_s(fname_RGB, 50, _T("RGB_Camera.bmp"));				
 			}
 #endif
 
@@ -318,6 +326,8 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 					pbInputData[dwMaxLength - i - 2] = tmpG;
 					pbInputData[dwMaxLength - i - 3] = tmpR;
 				}
+#endif
+#if 0			// if need mirror
 				//swap left and right
 				for (int i = 0; i < g_Height; i++) {
 					for (int j = 0; j < g_Width/2; j++) {
@@ -350,10 +360,19 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 #else
 				if (frame_index == 0)
 #endif
-				{					
-					printf("create light file: %ls\n", fname_light);
-					file_light = CreateFile(fname_light, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
-					file_to_write = file_light;
+				{	
+					if (g_device_type == 0) // IR Camera
+					{
+						printf("create light file: %ls\n", fname_light);
+						file_light = CreateFile(fname_light, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
+						file_to_write = file_light;
+					}
+					else
+					{   // RGB Camera
+						printf("create RGB file: %ls\n", fname_RGB);
+						file_rgb = CreateFile(fname_RGB, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);//Sets up the new bmp to be written to
+						file_to_write = file_rgb;
+					}
 				}
 				else
 				{
@@ -384,6 +403,18 @@ HRESULT CaptureManager::CaptureEngineSampleCB::OnSample(IMFSample * pSample)
 				//write data to file
 				WriteFile(file_to_write, pbInputData, dwMaxLength, &write, NULL);
 				
+				if (g_device_type == 1) // RGB Camera
+				{
+					CloseHandle(file_rgb);
+#if ENABLE_CAPTURE_N_EXIT
+					g_pEngine->StopPreview();
+					exit(0);
+#else
+					g_Capture_photo = FALSE;
+					initOnSampleVariables();
+					return hr;
+#endif /*ENABLE_CAPTURE_N_EXIT*/
+				}
 
 				//Calculate and dump result to result.txt
 				if (frame_index == 1)
@@ -1479,9 +1510,15 @@ done:
 
 HRESULT CaptureManager::UpdateVideo(HDC hdc)
 {
+#if 1
 	int rv = StretchDIBits(hdc, 0, 0, g_Width, g_Height, 0, 0, g_Width, g_Height,
 		g_pbInputData, &g_BitmapInfo,
 		DIB_RGB_COLORS, SRCCOPY);
+#else // if need mirror
+	int rv = StretchDIBits(hdc, g_Width, 0, -g_Width, g_Height, 0, 0, g_Width, g_Height,
+		g_pbInputData, &g_BitmapInfo,
+		DIB_RGB_COLORS, SRCCOPY);
+#endif
 	if (rv == 0) {
 		printf("StretchDIBits failed\n");
 	}
