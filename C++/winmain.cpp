@@ -20,7 +20,7 @@
 int g_threshold, g_op_mode, g_countToCapture, g_device_type, g_select_no, g_resolutionIndex, g_pin_no;
 int g_sum=0, g_validNum=0;
 
-WCHAR *g_toolVersion = L"version: 20170810";
+WCHAR *g_toolVersion = L"version: 20170929";
 FILE *file_log;
 HWND initWindow;
 
