@@ -8,7 +8,7 @@
 #include "Capture.h"
 
 extern CaptureManager *g_pEngine;
-
+extern int g_device_type;
 
 // Implements the window procedure for the video preview window.
 
@@ -16,10 +16,12 @@ int paintCount = 0;
 namespace PreviewWnd
 {
     HBRUSH hBackgroundBrush = 0;
-
+	HBRUSH hTargetBrush = 0;
+	RECT   TargeRect;
     BOOL OnCreate(HWND /*hwnd*/, LPCREATESTRUCT /*lpCreateStruct*/)
     {
         hBackgroundBrush = CreateSolidBrush(RGB(0,0,0));
+		hTargetBrush = CreateSolidBrush(RGB(255, 0, 0));
         return (hBackgroundBrush != NULL);
     }
 
@@ -38,9 +40,22 @@ namespace PreviewWnd
 			FillRect(hdc, &ps.rcPaint, hBackgroundBrush);
 			printf("On paint %d\n", paintCount++);
 		}
-        
+		else
+		{
+			LONG center_x = (ps.rcPaint.right + ps.rcPaint.left) / 2;
+			LONG center_y = (ps.rcPaint.bottom + ps.rcPaint.top) / 2 ;
+			LONG range_x = 40;
+			LONG range_y = 80;
+
+			TargeRect.left = center_x - range_x;
+			TargeRect.top = center_y - range_y;
+			TargeRect.right = center_x + range_x;
+			TargeRect.bottom = center_y + range_y;
+		}
+
 		g_pEngine->UpdateVideo(hdc);
-        
+		if (g_device_type == 1)
+			FrameRect(hdc, &TargeRect, hTargetBrush);
         EndPaint(hwnd, &ps);
     }
 
