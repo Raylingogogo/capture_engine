@@ -16,7 +16,7 @@
 #include <tchar.h>
 
 
-#define USE_ILLUMINATE_FLAG		1
+#define USE_ILLUMINATE_FLAG		0
 #define USE_TIME_FILE_NAME		0
 #define ENABLE_CAPTURE_N_EXIT	1
 
